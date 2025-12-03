@@ -126,14 +126,7 @@ const CustomerDetailView = ({ userContext, environment }: ExtensionContextValue)
           </Box>
           <Button
             type="primary"
-            onPress={() => {
-              // In production, this would initiate OAuth flow
-              // The URL should point to your backend's OAuth initiation endpoint
-              window.open(
-                'https://your-backend-api.com/api/zendesk/oauth/authorize',
-                '_blank'
-              );
-            }}
+            href="https://your-backend-api.com/api/zendesk/oauth/authorize"
           >
             <Icon name="external" />
             Connect Zendesk Account
