@@ -33,7 +33,7 @@
     ],
     "actions": [],
     "content_security_policy": {
-      "connect-src": ["https://*.zendesk.com/api/v2/*"],
+      "connect-src": ["https://*.zendesk.com/"],
       "image-src": null
     }
   },
