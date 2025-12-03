@@ -36,8 +36,12 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
     userId: userContext?.id || '',
   });
 
-  // Get customer email directly from Stripe's objectContext
-  const stripeCustomerEmail = environment?.objectContext?.email as string | undefined;
+  // Get customer email from Stripe's objectContext - try multiple possible locations
+  const objectContext = environment?.objectContext as Record<string, any> | undefined;
+  const stripeCustomerEmail = 
+    objectContext?.email || 
+    objectContext?.customer?.email ||
+    (typeof objectContext?.object === 'object' ? objectContext.object?.email : null);
 
   // Load Zendesk data when connected and we have email
   useEffect(() => {
