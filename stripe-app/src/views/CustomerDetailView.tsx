@@ -325,7 +325,7 @@ const TicketRow = ({ ticket, subdomain }: { ticket: ZendeskTicket; subdomain: st
           </Badge>
         </Inline>
       </Box>
-      <Box css={{ font: 'body', fontWeight: 'medium' }}>
+      <Box css={{ font: 'body', fontWeight: 'semibold' }}>
         {ticket.subject}
       </Box>
       <Box css={{ color: 'secondary', font: 'caption' }}>

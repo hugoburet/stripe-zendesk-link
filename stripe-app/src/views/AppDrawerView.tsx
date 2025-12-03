@@ -289,7 +289,7 @@ const CustomerRow = ({
     }}
     onPress={onSelect}
   >
-    <Box css={{ font: 'body', fontWeight: 'medium' }}>{customer.name}</Box>
+    <Box css={{ font: 'body', fontWeight: 'semibold' }}>{customer.name}</Box>
     <Box css={{ color: 'secondary', font: 'caption' }}>{customer.email}</Box>
     {customer.organization && (
       <Box css={{ color: 'secondary', font: 'caption' }}>
@@ -333,7 +333,7 @@ const TicketCard = ({ ticket, subdomain }: { ticket: ZendeskTicket; subdomain: s
           {ticket.status}
         </Badge>
       </Box>
-      <Box css={{ font: 'body', fontWeight: 'medium' }}>{ticket.subject}</Box>
+      <Box css={{ font: 'body', fontWeight: 'semibold' }}>{ticket.subject}</Box>
       <Box css={{ color: 'secondary', font: 'caption' }}>
         {new Date(ticket.updatedAt).toLocaleDateString()}
       </Box>
