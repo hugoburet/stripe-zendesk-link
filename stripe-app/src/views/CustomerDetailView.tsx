@@ -10,7 +10,7 @@ import {
 } from '@stripe/ui-extension-sdk/ui';
 import type { ExtensionContextValue } from '@stripe/ui-extension-sdk/context';
 import { useState, useEffect } from 'react';
-import { fetchZendeskCustomer, fetchZendeskTickets, checkZendeskConnection, getStripeCustomerEmail } from '../api/zendesk';
+import { fetchZendeskCustomer, fetchZendeskTickets, checkZendeskConnection, getZendeskSubdomain } from '../api/zendesk';
 import type { ZendeskCustomer, ZendeskTicket } from '../types';
 
 const CustomerDetailView = ({ userContext, environment }: ExtensionContextValue) => {
@@ -20,10 +20,10 @@ const CustomerDetailView = ({ userContext, environment }: ExtensionContextValue)
   const [error, setError] = useState<string | null>(null);
   const [isZendeskConnected, setIsZendeskConnected] = useState(false);
   const [checkingConnection, setCheckingConnection] = useState(true);
-  const [customerEmail, setCustomerEmail] = useState<string | null>(null);
+  const [zendeskSubdomain, setZendeskSubdomain] = useState<string | null>(null);
 
-  // Get the Stripe customer ID from the context
-  const stripeCustomerId = environment?.objectContext?.id as string | undefined;
+  // Get customer email directly from Stripe's objectContext
+  const stripeCustomerEmail = environment?.objectContext?.email as string | undefined;
 
   // Check Zendesk connection status on mount
   useEffect(() => {
@@ -31,6 +31,10 @@ const CustomerDetailView = ({ userContext, environment }: ExtensionContextValue)
       try {
         const connected = await checkZendeskConnection();
         setIsZendeskConnected(connected);
+        if (connected) {
+          const subdomain = await getZendeskSubdomain();
+          setZendeskSubdomain(subdomain);
+        }
       } catch (err) {
         console.error('Failed to check Zendesk connection:', err);
         setIsZendeskConnected(false);
@@ -41,47 +45,25 @@ const CustomerDetailView = ({ userContext, environment }: ExtensionContextValue)
     checkConnection();
   }, []);
 
-  // Fetch customer email from Stripe API via backend
-  useEffect(() => {
-    async function fetchCustomerEmail() {
-      if (!stripeCustomerId) {
-        setError('No customer selected');
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const email = await getStripeCustomerEmail(stripeCustomerId);
-        setCustomerEmail(email);
-      } catch (err) {
-        console.error('Failed to fetch customer email:', err);
-        setError('Failed to fetch customer details');
-        setLoading(false);
-      }
-    }
-
-    if (isZendeskConnected && !checkingConnection) {
-      fetchCustomerEmail();
-    }
-  }, [stripeCustomerId, isZendeskConnected, checkingConnection]);
-
-  // Load Zendesk data when we have the email
+  // Load Zendesk data when connected and we have email
   useEffect(() => {
     async function loadZendeskData() {
-      if (!customerEmail) {
+      if (!stripeCustomerEmail) {
+        setError('No email found for this customer');
+        setLoading(false);
         return;
       }
 
       try {
         setLoading(true);
         setError(null);
-        const customer = await fetchZendeskCustomer(customerEmail);
+        const customer = await fetchZendeskCustomer(stripeCustomerEmail);
         if (customer) {
           setZendeskCustomer(customer);
           const customerTickets = await fetchZendeskTickets(customer.id);
           setTickets(customerTickets);
         } else {
-          setError('No Zendesk customer found for this email');
+          setError('No Zendesk user found for this email');
         }
       } catch (err) {
         console.error('Failed to load Zendesk data:', err);
@@ -91,10 +73,10 @@ const CustomerDetailView = ({ userContext, environment }: ExtensionContextValue)
       }
     }
 
-    if (isZendeskConnected && customerEmail) {
+    if (isZendeskConnected && !checkingConnection) {
       loadZendeskData();
     }
-  }, [customerEmail, isZendeskConnected]);
+  }, [stripeCustomerEmail, isZendeskConnected, checkingConnection]);
 
   // Show loading while checking connection
   if (checkingConnection) {
@@ -122,17 +104,17 @@ const CustomerDetailView = ({ userContext, environment }: ExtensionContextValue)
             Connect to Zendesk
           </Box>
           <Box css={{ color: 'secondary', textAlign: 'center' }}>
-            Connect your Zendesk account to view customer support data alongside your Stripe customers.
+            Configure your Zendesk API credentials in the app settings to view customer support data.
           </Box>
           <Button
             type="primary"
-            href="https://your-backend-api.com/api/zendesk/oauth/authorize"
+            href="stripe://settings/com.example.zendesk-connector"
           >
-            <Icon name="external" />
-            Connect Zendesk Account
+            <Icon name="settings" />
+            Open Settings
           </Button>
           <Box css={{ color: 'secondary', font: 'caption', textAlign: 'center' }}>
-            You'll be redirected to Zendesk to authorize access.
+            You'll need your Zendesk subdomain, email, and API token.
           </Box>
         </Box>
       </ContextView>
@@ -159,17 +141,19 @@ const CustomerDetailView = ({ userContext, environment }: ExtensionContextValue)
       <ContextView title="Zendesk">
         <Box css={{ padding: 'medium', stack: 'y', gapY: 'medium' }}>
           <Box css={{ color: 'secondary' }}>
-            {error || 'No Zendesk customer found for this email'}
+            {error || 'No Zendesk user found for this email'}
           </Box>
-          {customerEmail && (
+          {stripeCustomerEmail && (
             <Box css={{ color: 'secondary', font: 'caption' }}>
-              Searched for: {customerEmail}
+              Searched for: {stripeCustomerEmail}
             </Box>
           )}
-          <Button href="https://zendesk.com" type="secondary">
-            <Icon name="external" />
-            Open Zendesk
-          </Button>
+          {zendeskSubdomain && (
+            <Button href={`https://${zendeskSubdomain}.zendesk.com`} type="secondary">
+              <Icon name="external" />
+              Open Zendesk
+            </Button>
+          )}
         </Box>
       </ContextView>
     );
@@ -179,13 +163,15 @@ const CustomerDetailView = ({ userContext, environment }: ExtensionContextValue)
     <ContextView
       title="Zendesk"
       actions={
-        <Button
-          href={`https://your-subdomain.zendesk.com/agent/users/${zendeskCustomer.id}`}
-          type="secondary"
-        >
-          <Icon name="external" />
-          View in Zendesk
-        </Button>
+        zendeskSubdomain && (
+          <Button
+            href={`https://${zendeskSubdomain}.zendesk.com/agent/users/${zendeskCustomer.id}`}
+            type="secondary"
+          >
+            <Icon name="external" />
+            View in Zendesk
+          </Button>
+        )
       }
     >
       <Box css={{ stack: 'y', gapY: 'large', padding: 'medium' }}>
@@ -226,7 +212,7 @@ const CustomerDetailView = ({ userContext, environment }: ExtensionContextValue)
           ) : (
             <Box css={{ stack: 'y', gapY: 'small' }}>
               {tickets.slice(0, 5).map((ticket) => (
-                <TicketRow key={ticket.id} ticket={ticket} />
+                <TicketRow key={ticket.id} ticket={ticket} subdomain={zendeskSubdomain} />
               ))}
             </Box>
           )}
@@ -236,7 +222,7 @@ const CustomerDetailView = ({ userContext, environment }: ExtensionContextValue)
   );
 };
 
-const TicketRow = ({ ticket }: { ticket: ZendeskTicket }) => {
+const TicketRow = ({ ticket, subdomain }: { ticket: ZendeskTicket; subdomain: string | null }) => {
   const statusColors: Record<string, 'info' | 'warning' | 'positive' | 'critical' | 'neutral'> = {
     new: 'info',
     open: 'warning',
@@ -263,12 +249,16 @@ const TicketRow = ({ ticket }: { ticket: ZendeskTicket }) => {
       }}
     >
       <Box css={{ stack: 'x', distribute: 'space-between', alignY: 'center' }}>
-        <Link
-          href={`https://your-subdomain.zendesk.com/agent/tickets/${ticket.id}`}
-          external
-        >
-          #{ticket.id}
-        </Link>
+        {subdomain ? (
+          <Link
+            href={`https://${subdomain}.zendesk.com/agent/tickets/${ticket.id}`}
+            external
+          >
+            #{ticket.id}
+          </Link>
+        ) : (
+          <Box>#{ticket.id}</Box>
+        )}
         <Inline css={{ gapX: 'xsmall' }}>
           <Badge type={statusColors[ticket.status] || 'neutral'}>
             {ticket.status}

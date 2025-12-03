@@ -7,6 +7,10 @@
     {
       "permission": "customer_read",
       "purpose": "View customer details to match with Zendesk contacts"
+    },
+    {
+      "permission": "secret_write",
+      "purpose": "Store Zendesk API credentials securely"
     }
   ],
   "app_backend": {
@@ -21,11 +25,15 @@
       {
         "viewport": "stripe.dashboard.drawer",
         "component": "AppDrawerView"
+      },
+      {
+        "viewport": "stripe.dashboard.settings.page",
+        "component": "SettingsView"
       }
     ],
     "actions": [],
     "content_security_policy": {
-      "connect-src": null,
+      "connect-src": ["https://*.zendesk.com"],
       "image-src": null
     }
   },

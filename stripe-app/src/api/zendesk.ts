@@ -1,62 +1,124 @@
 import type { ZendeskCustomer, ZendeskTicket } from '../types';
+import { createHttpClient, STRIPE_API_KEY } from '@stripe/ui-extension-sdk/http_client';
+import Stripe from 'stripe';
 
-// Replace with your actual backend API URL
-const API_BASE_URL = 'https://your-backend-api.com/api';
+// Create Stripe client for accessing secrets
+const stripe = new Stripe(STRIPE_API_KEY, {
+  httpClient: createHttpClient(),
+  apiVersion: '2023-10-16',
+});
+
+interface ZendeskCredentials {
+  subdomain: string;
+  email: string;
+  apiToken: string;
+}
+
+/**
+ * Get Zendesk credentials from Stripe Secret Store
+ */
+async function getZendeskCredentials(): Promise<ZendeskCredentials | null> {
+  try {
+    const secrets = await stripe.apps.secrets.list({
+      scope: { type: 'account' },
+      limit: 10,
+    });
+
+    const subdomain = secrets.data.find(s => s.name === 'zendesk_subdomain')?.payload;
+    const email = secrets.data.find(s => s.name === 'zendesk_email')?.payload;
+    const apiToken = secrets.data.find(s => s.name === 'zendesk_api_token')?.payload;
+
+    if (!subdomain || !email || !apiToken) {
+      return null;
+    }
+
+    return { subdomain, email, apiToken };
+  } catch (error) {
+    console.error('Error fetching Zendesk credentials:', error);
+    return null;
+  }
+}
+
+/**
+ * Make an authenticated request to Zendesk API
+ */
+async function zendeskFetch<T>(
+  credentials: ZendeskCredentials,
+  endpoint: string
+): Promise<T> {
+  const { subdomain, email, apiToken } = credentials;
+  const baseUrl = `https://${subdomain}.zendesk.com/api/v2`;
+  const auth = btoa(`${email}/token:${apiToken}`);
+
+  const response = await fetch(`${baseUrl}${endpoint}`, {
+    headers: {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Zendesk API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
 
 /**
  * Check if the user has connected their Zendesk account
- * Your backend should store OAuth tokens and return connection status
  */
 export async function checkZendeskConnection(): Promise<boolean> {
+  const credentials = await getZendeskCredentials();
+  if (!credentials) {
+    return false;
+  }
+
+  // Verify credentials by making a test API call
   try {
-    const response = await fetch(`${API_BASE_URL}/zendesk/connection-status`, {
-      credentials: 'include', // Include cookies for session
-    });
-    if (!response.ok) return false;
-    const data = await response.json();
-    return data.connected === true;
+    await zendeskFetch(credentials, '/users/me.json');
+    return true;
   } catch (error) {
-    console.error('Error checking Zendesk connection:', error);
+    console.error('Zendesk credentials invalid:', error);
     return false;
   }
 }
 
 /**
- * Get the email address for a Stripe customer
- * This fetches from your backend which uses the Stripe API
+ * Get the Zendesk subdomain for building URLs
  */
-export async function getStripeCustomerEmail(customerId: string): Promise<string | null> {
-  try {
-    const response = await fetch(
-      `${API_BASE_URL}/stripe/customers/${encodeURIComponent(customerId)}`,
-      { credentials: 'include' }
-    );
-    if (!response.ok) {
-      if (response.status === 404) return null;
-      throw new Error('Failed to fetch customer');
-    }
-    const data = await response.json();
-    return data.email || null;
-  } catch (error) {
-    console.error('Error fetching Stripe customer:', error);
-    throw error;
-  }
+export async function getZendeskSubdomain(): Promise<string | null> {
+  const credentials = await getZendeskCredentials();
+  return credentials?.subdomain || null;
 }
 
 /**
- * Fetch Zendesk customer by email
+ * Fetch Zendesk customer (user) by email
  */
 export async function fetchZendeskCustomer(email: string): Promise<ZendeskCustomer | null> {
+  const credentials = await getZendeskCredentials();
+  if (!credentials) {
+    throw new Error('Zendesk not connected');
+  }
+
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/zendesk/customers?email=${encodeURIComponent(email)}`,
-      { credentials: 'include' }
+    const response = await zendeskFetch<{ users: any[] }>(
+      credentials,
+      `/users/search.json?query=email:${encodeURIComponent(email)}`
     );
-    if (!response.ok) {
-      if (response.status === 404) return null;
-      throw new Error('Failed to fetch customer');
+
+    if (response.users && response.users.length > 0) {
+      const user = response.users[0];
+      return {
+        id: String(user.id),
+        name: user.name || 'Unknown',
+        email: user.email || email,
+        organization: user.organization?.name || null,
+        tags: user.tags || [],
+        createdAt: user.created_at,
+      };
     }
-    return response.json();
+
+    return null;
   } catch (error) {
     console.error('Error fetching Zendesk customer:', error);
     throw error;
@@ -64,15 +126,28 @@ export async function fetchZendeskCustomer(email: string): Promise<ZendeskCustom
 }
 
 /**
- * Fetch all Zendesk customers
+ * Fetch all Zendesk customers (limited to recent users)
  */
 export async function fetchAllZendeskCustomers(): Promise<ZendeskCustomer[]> {
+  const credentials = await getZendeskCredentials();
+  if (!credentials) {
+    throw new Error('Zendesk not connected');
+  }
+
   try {
-    const response = await fetch(`${API_BASE_URL}/zendesk/customers`, {
-      credentials: 'include',
-    });
-    if (!response.ok) throw new Error('Failed to fetch customers');
-    return response.json();
+    const response = await zendeskFetch<{ users: any[] }>(
+      credentials,
+      '/users.json?role=end-user&per_page=100'
+    );
+
+    return response.users.map((user: any) => ({
+      id: String(user.id),
+      name: user.name || 'Unknown',
+      email: user.email || '',
+      organization: user.organization?.name || null,
+      tags: user.tags || [],
+      createdAt: user.created_at,
+    }));
   } catch (error) {
     console.error('Error fetching Zendesk customers:', error);
     throw error;
@@ -80,16 +155,28 @@ export async function fetchAllZendeskCustomers(): Promise<ZendeskCustomer[]> {
 }
 
 /**
- * Fetch tickets for a Zendesk customer
+ * Fetch tickets for a Zendesk user by their ID
  */
-export async function fetchZendeskTickets(customerId: string): Promise<ZendeskTicket[]> {
+export async function fetchZendeskTickets(userId: string): Promise<ZendeskTicket[]> {
+  const credentials = await getZendeskCredentials();
+  if (!credentials) {
+    throw new Error('Zendesk not connected');
+  }
+
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/zendesk/tickets?customerId=${encodeURIComponent(customerId)}`,
-      { credentials: 'include' }
+    const response = await zendeskFetch<{ tickets: any[] }>(
+      credentials,
+      `/users/${encodeURIComponent(userId)}/tickets/requested.json`
     );
-    if (!response.ok) throw new Error('Failed to fetch tickets');
-    return response.json();
+
+    return response.tickets.map((ticket: any) => ({
+      id: String(ticket.id),
+      subject: ticket.subject || 'No subject',
+      status: ticket.status || 'open',
+      priority: ticket.priority || 'normal',
+      createdAt: ticket.created_at,
+      updatedAt: ticket.updated_at,
+    }));
   } catch (error) {
     console.error('Error fetching Zendesk tickets:', error);
     throw error;

@@ -12,7 +12,7 @@ import {
 } from '@stripe/ui-extension-sdk/ui';
 import type { ExtensionContextValue } from '@stripe/ui-extension-sdk/context';
 import { useState, useEffect, useCallback } from 'react';
-import { fetchAllZendeskCustomers, fetchZendeskTickets } from '../api/zendesk';
+import { fetchAllZendeskCustomers, fetchZendeskTickets, checkZendeskConnection, getZendeskSubdomain } from '../api/zendesk';
 import type { ZendeskCustomer, ZendeskTicket } from '../types';
 
 const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
@@ -22,9 +22,35 @@ const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [checkingConnection, setCheckingConnection] = useState(true);
+  const [zendeskSubdomain, setZendeskSubdomain] = useState<string | null>(null);
 
+  // Check connection on mount
+  useEffect(() => {
+    async function checkConnection() {
+      try {
+        const connected = await checkZendeskConnection();
+        setIsConnected(connected);
+        if (connected) {
+          const subdomain = await getZendeskSubdomain();
+          setZendeskSubdomain(subdomain);
+        }
+      } catch (err) {
+        console.error('Failed to check connection:', err);
+        setIsConnected(false);
+      } finally {
+        setCheckingConnection(false);
+      }
+    }
+    checkConnection();
+  }, []);
+
+  // Load customers when connected
   useEffect(() => {
     async function loadCustomers() {
+      if (!isConnected) return;
+      
       try {
         setLoading(true);
         const data = await fetchAllZendeskCustomers();
@@ -35,8 +61,11 @@ const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
         setLoading(false);
       }
     }
-    loadCustomers();
-  }, []);
+    
+    if (!checkingConnection && isConnected) {
+      loadCustomers();
+    }
+  }, [isConnected, checkingConnection]);
 
   const handleSelectCustomer = useCallback(async (customer: ZendeskCustomer) => {
     setSelectedCustomer(customer);
@@ -56,6 +85,46 @@ const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Show loading while checking connection
+  if (checkingConnection) {
+    return (
+      <ContextView title="Zendesk Customers">
+        <Box css={{ padding: 'large', stack: 'y', alignX: 'center' }}>
+          <Spinner size="large" />
+          <Box css={{ marginTop: 'small', color: 'secondary' }}>
+            Checking connection...
+          </Box>
+        </Box>
+      </ContextView>
+    );
+  }
+
+  // Show connect prompt if not connected
+  if (!isConnected) {
+    return (
+      <ContextView title="Zendesk Customers">
+        <Box css={{ padding: 'medium', stack: 'y', gapY: 'medium', alignX: 'center' }}>
+          <Box css={{ textAlign: 'center' }}>
+            <Icon name="settings" size="large" />
+          </Box>
+          <Box css={{ font: 'heading', fontWeight: 'semibold', textAlign: 'center' }}>
+            Connect to Zendesk
+          </Box>
+          <Box css={{ color: 'secondary', textAlign: 'center' }}>
+            Configure your Zendesk API credentials in the app settings to browse customers and tickets.
+          </Box>
+          <Button
+            type="primary"
+            href="stripe://settings/com.example.zendesk-connector"
+          >
+            <Icon name="settings" />
+            Open Settings
+          </Button>
+        </Box>
+      </ContextView>
+    );
+  }
 
   if (loading) {
     return (
@@ -125,21 +194,23 @@ const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
             ) : (
               <Box css={{ stack: 'y', gapY: 'small' }}>
                 {tickets.map((ticket) => (
-                  <TicketCard key={ticket.id} ticket={ticket} />
+                  <TicketCard key={ticket.id} ticket={ticket} subdomain={zendeskSubdomain} />
                 ))}
               </Box>
             )}
           </Box>
 
-          <Box css={{ marginTop: 'medium' }}>
-            <Button
-              href={`https://your-subdomain.zendesk.com/agent/users/${selectedCustomer.id}`}
-              type="primary"
-            >
-              <Icon name="external" />
-              View in Zendesk
-            </Button>
-          </Box>
+          {zendeskSubdomain && (
+            <Box css={{ marginTop: 'medium' }}>
+              <Button
+                href={`https://${zendeskSubdomain}.zendesk.com/agent/users/${selectedCustomer.id}`}
+                type="primary"
+              >
+                <Icon name="external" />
+                View in Zendesk
+              </Button>
+            </Box>
+          )}
         </Box>
       </ContextView>
     );
@@ -204,7 +275,7 @@ const CustomerRow = ({
   </Box>
 );
 
-const TicketCard = ({ ticket }: { ticket: ZendeskTicket }) => {
+const TicketCard = ({ ticket, subdomain }: { ticket: ZendeskTicket; subdomain: string | null }) => {
   const statusColors: Record<string, 'info' | 'warning' | 'positive' | 'critical' | 'neutral'> = {
     new: 'info',
     open: 'warning',
@@ -224,12 +295,16 @@ const TicketCard = ({ ticket }: { ticket: ZendeskTicket }) => {
       }}
     >
       <Box css={{ stack: 'x', distribute: 'space-between', alignY: 'center' }}>
-        <Link
-          href={`https://your-subdomain.zendesk.com/agent/tickets/${ticket.id}`}
-          external
-        >
-          #{ticket.id}
-        </Link>
+        {subdomain ? (
+          <Link
+            href={`https://${subdomain}.zendesk.com/agent/tickets/${ticket.id}`}
+            external
+          >
+            #{ticket.id}
+          </Link>
+        ) : (
+          <Box>#{ticket.id}</Box>
+        )}
         <Badge type={statusColors[ticket.status] || 'neutral'}>
           {ticket.status}
         </Badge>
