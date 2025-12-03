@@ -19,9 +19,11 @@ import { useZendeskOAuth } from '../hooks/useZendeskOAuth';
 const CustomerDetailView = ({ userContext, environment, oauthContext }: ExtensionContextValue) => {
   const [zendeskCustomer, setZendeskCustomer] = useState<ZendeskCustomer | null>(null);
   const [tickets, setTickets] = useState<ZendeskTicket[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inputSubdomain, setInputSubdomain] = useState('');
+  const [manualEmail, setManualEmail] = useState('');
+  const [hasSearched, setHasSearched] = useState(false);
 
   // Use OAuth hook
   const {
@@ -31,6 +33,7 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
     subdomain,
     initiateLogin,
     disconnect,
+    isDemoMode,
   } = useZendeskOAuth({
     oauthContext,
     userId: userContext?.id || '',
@@ -43,40 +46,45 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
     objectContext?.customer?.email ||
     (typeof objectContext?.object === 'object' ? objectContext.object?.email : null);
 
-  // Load Zendesk data when connected and we have email
-  useEffect(() => {
-    async function loadZendeskData() {
-      if (!stripeCustomerEmail) {
-        setError('No email found for this customer');
-        setLoading(false);
-        return;
-      }
+  // The email to use for lookup - prefer Stripe context, fallback to manual entry
+  const emailToSearch = stripeCustomerEmail || manualEmail;
 
-      try {
-        setLoading(true);
-        setError(null);
-        const customer = await fetchZendeskCustomer(stripeCustomerEmail);
-        if (customer) {
-          setZendeskCustomer(customer);
-          const customerTickets = await fetchZendeskTickets(customer.id);
-          setTickets(customerTickets);
-        } else {
-          setError('No Zendesk user found for this email');
-        }
-      } catch (err) {
-        console.error('Failed to load Zendesk data:', err);
-        setError('Failed to load Zendesk data');
-      } finally {
-        setLoading(false);
+  // Function to search for customer
+  const searchCustomer = async (email: string) => {
+    if (!email) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      setHasSearched(true);
+      const customer = await fetchZendeskCustomer(email);
+      if (customer) {
+        setZendeskCustomer(customer);
+        const customerTickets = await fetchZendeskTickets(customer.id);
+        setTickets(customerTickets);
+      } else {
+        setError(`No Zendesk user found for: ${email}`);
       }
-    }
-
-    if (isConnected && !oauthLoading) {
-      loadZendeskData();
-    } else if (!oauthLoading) {
+    } catch (err) {
+      console.error('Failed to load Zendesk data:', err);
+      setError('Failed to load Zendesk data');
+    } finally {
       setLoading(false);
     }
+  };
+
+  // Auto-search when connected and we have email from Stripe context
+  useEffect(() => {
+    if (isConnected && !oauthLoading && stripeCustomerEmail && !hasSearched) {
+      searchCustomer(stripeCustomerEmail);
+    }
   }, [stripeCustomerEmail, isConnected, oauthLoading]);
+
+  const handleManualSearch = () => {
+    if (manualEmail.trim()) {
+      searchCustomer(manualEmail.trim());
+    }
+  };
 
   const handleLogin = () => {
     if (inputSubdomain.trim()) {
@@ -154,19 +162,39 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
     );
   }
 
-  // Show error or no customer found
-  if (error || !zendeskCustomer) {
+  // Show error or no customer found - with manual search option
+  if (error || (!zendeskCustomer && !loading)) {
     return (
       <ContextView title="Zendesk">
         <Box css={{ padding: 'medium', stack: 'y', gapY: 'medium' }}>
-          <Box css={{ color: 'secondary' }}>
-            {error || 'No Zendesk user found for this email'}
-          </Box>
-          {stripeCustomerEmail && (
-            <Box css={{ color: 'secondary', font: 'caption' }}>
-              Searched for: {stripeCustomerEmail}
+          {error && (
+            <Box css={{ color: 'secondary' }}>
+              {error}
             </Box>
           )}
+          
+          {/* Manual email search - useful in sandbox/demo mode */}
+          {(!stripeCustomerEmail || error) && (
+            <Box css={{ stack: 'y', gapY: 'small' }}>
+              <Box css={{ font: 'caption', color: 'secondary' }}>
+                {isDemoMode ? 'Demo mode: Enter an email to search' : 'Search by email:'}
+              </Box>
+              <TextField
+                label="Customer email"
+                placeholder="johntest@test.com"
+                value={manualEmail}
+                onChange={(e) => setManualEmail(e.target.value)}
+              />
+              <Button 
+                type="primary" 
+                onPress={handleManualSearch}
+                disabled={!manualEmail.trim()}
+              >
+                Search Zendesk
+              </Button>
+            </Box>
+          )}
+          
           {subdomain && (
             <Button href={`https://${subdomain}.zendesk.com`} type="secondary">
               <Icon name="external" />
