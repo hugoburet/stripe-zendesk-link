@@ -12,6 +12,9 @@ const stripe = new Stripe(STRIPE_API_KEY, {
 const ZENDESK_CLIENT_ID = 'your-zendesk-oauth-client-id';
 const STRIPE_APP_ID = 'com.example.zendesk-connector';
 
+// Demo mode flag - set to true to test without real OAuth
+const DEMO_MODE = true;
+
 interface UseZendeskOAuthProps {
   oauthContext?: {
     code?: string;
@@ -29,6 +32,7 @@ interface UseZendeskOAuthReturn {
   accessToken: string | null;
   disconnect: () => Promise<void>;
   initiateLogin: (subdomain: string) => Promise<void>;
+  isDemoMode: boolean;
 }
 
 export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps): UseZendeskOAuthReturn {
@@ -46,6 +50,19 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
   // Check for existing connection and handle OAuth callback
   useEffect(() => {
     async function checkConnectionAndHandleCallback() {
+      // Demo mode: check localStorage for demo connection
+      if (DEMO_MODE) {
+        const demoConnected = localStorage.getItem('zendesk_demo_connected');
+        const demoSubdomain = localStorage.getItem('zendesk_demo_subdomain');
+        if (demoConnected === 'true' && demoSubdomain) {
+          setIsConnected(true);
+          setSubdomain(demoSubdomain);
+          setAccessToken('demo-token');
+        }
+        setIsLoading(false);
+        return;
+      }
+
       try {
         // First check if we already have tokens stored
         const secrets = await stripe.apps.secrets.list({
@@ -124,6 +141,18 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
       setIsLoading(true);
       setError(null);
 
+      // Demo mode: simulate successful connection
+      if (DEMO_MODE) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate delay
+        localStorage.setItem('zendesk_demo_connected', 'true');
+        localStorage.setItem('zendesk_demo_subdomain', userSubdomain);
+        setSubdomain(userSubdomain);
+        setAccessToken('demo-token');
+        setIsConnected(true);
+        setIsLoading(false);
+        return;
+      }
+
       // Store subdomain for later use in token exchange
       await stripe.apps.secrets.create({
         name: 'zendesk_subdomain',
@@ -151,7 +180,6 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
         `code_challenge_method=S256`;
 
       // Reset loading after a short delay if redirect doesn't happen
-      // (e.g., in sandbox/demo environment where window.open may not work)
       setTimeout(() => {
         setIsLoading(false);
       }, 2000);
@@ -170,6 +198,17 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
     try {
       setIsLoading(true);
       
+      // Demo mode: clear localStorage
+      if (DEMO_MODE) {
+        localStorage.removeItem('zendesk_demo_connected');
+        localStorage.removeItem('zendesk_demo_subdomain');
+        setIsConnected(false);
+        setAccessToken(null);
+        setSubdomain(null);
+        setIsLoading(false);
+        return;
+      }
+
       const secretNames = ['zendesk_access_token', 'zendesk_subdomain'];
       
       for (const name of secretNames) {
@@ -203,5 +242,6 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
     accessToken,
     disconnect,
     initiateLogin,
+    isDemoMode: DEMO_MODE,
   };
 }
