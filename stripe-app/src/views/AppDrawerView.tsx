@@ -9,7 +9,6 @@ import {
   Spinner,
   TextField,
   Badge,
-  FocusView,
   Banner,
 } from '@stripe/ui-extension-sdk/ui';
 import type { ExtensionContextValue } from '@stripe/ui-extension-sdk/context';
@@ -18,27 +17,22 @@ import { fetchAllZendeskCustomers, fetchZendeskTickets } from '../api/zendesk';
 import type { ZendeskCustomer, ZendeskTicket } from '../types';
 import { useZendeskOAuth } from '../hooks/useZendeskOAuth';
 
-const AppDrawerView = ({ userContext, environment, oauthContext }: ExtensionContextValue) => {
+const AppDrawerView = ({ userContext, oauthContext }: ExtensionContextValue) => {
   const [customers, setCustomers] = useState<ZendeskCustomer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<ZendeskCustomer | null>(null);
   const [tickets, setTickets] = useState<ZendeskTicket[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [ticketsLoading, setTicketsLoading] = useState(false);
-
-  // OAuth setup form state
-  const [showSetup, setShowSetup] = useState(false);
-  const [setupSubdomain, setSetupSubdomain] = useState('');
-  const [clientId, setClientId] = useState('');
+  const [inputSubdomain, setInputSubdomain] = useState('');
 
   // Use OAuth hook
   const {
     isConnected,
     isLoading: oauthLoading,
     error: oauthError,
-    authUrl,
-    subdomain: zendeskSubdomain,
-    initializeOAuth,
+    subdomain,
+    initiateLogin,
     disconnect,
   } = useZendeskOAuth({
     oauthContext,
@@ -68,17 +62,10 @@ const AppDrawerView = ({ userContext, environment, oauthContext }: ExtensionCont
     }
   }, [isConnected, oauthLoading]);
 
-  // Handle OAuth setup
-  const handleStartSetup = async () => {
-    if (!setupSubdomain || !clientId) {
-      return;
+  const handleLogin = () => {
+    if (inputSubdomain.trim()) {
+      initiateLogin(inputSubdomain.trim());
     }
-    
-    await initializeOAuth({
-      subdomain: setupSubdomain,
-      clientId,
-    });
-    setShowSetup(false);
   };
 
   const handleSelectCustomer = useCallback(async (customer: ZendeskCustomer) => {
@@ -133,69 +120,25 @@ const AppDrawerView = ({ userContext, environment, oauthContext }: ExtensionCont
             Sign in with your Zendesk account to browse customers and tickets.
           </Box>
           
-          {authUrl ? (
-            <Button type="primary" href={authUrl}>
-              <Icon name="external" />
-              Sign in with Zendesk
-            </Button>
-          ) : (
-            <Button type="primary" onPress={() => setShowSetup(true)}>
-              <Icon name="settings" />
-              Configure Zendesk
-            </Button>
-          )}
-        </Box>
-
-        <FocusView
-          title="Connect to Zendesk"
-          shown={showSetup}
-          onClose={() => setShowSetup(false)}
-          primaryAction={
-            <Button 
-              type="primary" 
-              onPress={handleStartSetup} 
-              disabled={!setupSubdomain || !clientId}
-            >
-              Continue to Sign In
-            </Button>
-          }
-          secondaryAction={
-            <Button onPress={() => setShowSetup(false)}>Cancel</Button>
-          }
-        >
-          <Box css={{ stack: 'y', gapY: 'large', padding: 'medium' }}>
-            <Banner 
-              type="info" 
-              title="OAuth Setup Required"
-              description="First, create an OAuth client in Zendesk Admin Center under Apps and integrations > APIs > Zendesk API > OAuth Clients."
+          <Box css={{ width: 'fill' }}>
+            <TextField
+              label="Zendesk subdomain"
+              placeholder="yourcompany"
+              description="From yourcompany.zendesk.com"
+              value={inputSubdomain}
+              onChange={(e) => setInputSubdomain(e.target.value)}
             />
-
-            <Box css={{ stack: 'y', gapY: 'medium' }}>
-              <TextField
-                label="Zendesk Subdomain"
-                placeholder="yourcompany"
-                description="From yourcompany.zendesk.com"
-                value={setupSubdomain}
-                onChange={(e) => setSetupSubdomain(e.target.value)}
-              />
-              <TextField
-                label="OAuth Client ID"
-                placeholder="your-oauth-client-id"
-                description="Found in your OAuth client settings"
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-              />
-            </Box>
-
-            <Button
-              href="https://developer.zendesk.com/documentation/api-basics/authentication/using-oauth-to-authenticate-zendesk-api-requests-in-a-web-app/"
-              type="secondary"
-            >
-              <Icon name="external" />
-              OAuth Setup Guide
-            </Button>
           </Box>
-        </FocusView>
+
+          <Button 
+            type="primary" 
+            onPress={handleLogin}
+            disabled={!inputSubdomain.trim()}
+          >
+            <Icon name="external" />
+            Sign in with Zendesk
+          </Button>
+        </Box>
       </ContextView>
     );
   }
@@ -268,16 +211,16 @@ const AppDrawerView = ({ userContext, environment, oauthContext }: ExtensionCont
             ) : (
               <Box css={{ stack: 'y', gapY: 'small' }}>
                 {tickets.map((ticket) => (
-                  <TicketCard key={ticket.id} ticket={ticket} subdomain={zendeskSubdomain} />
+                  <TicketCard key={ticket.id} ticket={ticket} subdomain={subdomain} />
                 ))}
               </Box>
             )}
           </Box>
 
-          {zendeskSubdomain && (
+          {subdomain && (
             <Box css={{ marginTop: 'medium' }}>
               <Button
-                href={`https://${zendeskSubdomain}.zendesk.com/agent/users/${selectedCustomer.id}`}
+                href={`https://${subdomain}.zendesk.com/agent/users/${selectedCustomer.id}`}
                 type="primary"
               >
                 <Icon name="external" />
