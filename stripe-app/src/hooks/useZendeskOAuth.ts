@@ -47,18 +47,11 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
   const verifier = oauthContext?.verifier;
   const oauthError = oauthContext?.error;
 
-  // Check for existing connection and handle OAuth callback
+// Check for existing connection and handle OAuth callback
   useEffect(() => {
     async function checkConnectionAndHandleCallback() {
-      // Demo mode: check localStorage for demo connection
+      // Demo mode: skip connection check, just show login form immediately
       if (DEMO_MODE) {
-        const demoConnected = localStorage.getItem('zendesk_demo_connected');
-        const demoSubdomain = localStorage.getItem('zendesk_demo_subdomain');
-        if (demoConnected === 'true' && demoSubdomain) {
-          setIsConnected(true);
-          setSubdomain(demoSubdomain);
-          setAccessToken('demo-token');
-        }
         setIsLoading(false);
         return;
       }
@@ -141,11 +134,9 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
       setIsLoading(true);
       setError(null);
 
-      // Demo mode: simulate successful connection
+      // Demo mode: simulate successful connection (in-memory only)
       if (DEMO_MODE) {
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate delay
-        localStorage.setItem('zendesk_demo_connected', 'true');
-        localStorage.setItem('zendesk_demo_subdomain', userSubdomain);
+        await new Promise(resolve => setTimeout(resolve, 500)); // Brief delay for UX
         setSubdomain(userSubdomain);
         setAccessToken('demo-token');
         setIsConnected(true);
@@ -198,10 +189,8 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
     try {
       setIsLoading(true);
       
-      // Demo mode: clear localStorage
+      // Demo mode: just reset state (in-memory only)
       if (DEMO_MODE) {
-        localStorage.removeItem('zendesk_demo_connected');
-        localStorage.removeItem('zendesk_demo_subdomain');
         setIsConnected(false);
         setAccessToken(null);
         setSubdomain(null);
