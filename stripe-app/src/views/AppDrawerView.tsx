@@ -9,11 +9,21 @@ import {
   Spinner,
   TextField,
   Badge,
+  FocusView,
+  Banner,
 } from '@stripe/ui-extension-sdk/ui';
 import type { ExtensionContextValue } from '@stripe/ui-extension-sdk/context';
 import { useState, useEffect, useCallback } from 'react';
 import { fetchAllZendeskCustomers, fetchZendeskTickets, checkZendeskConnection, getZendeskSubdomain } from '../api/zendesk';
 import type { ZendeskCustomer, ZendeskTicket } from '../types';
+import { createHttpClient, STRIPE_API_KEY } from '@stripe/ui-extension-sdk/http_client';
+import Stripe from 'stripe';
+
+// Create Stripe client for saving secrets
+const stripe = new Stripe(STRIPE_API_KEY, {
+  httpClient: createHttpClient(),
+  apiVersion: '2023-10-16',
+});
 
 const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
   const [customers, setCustomers] = useState<ZendeskCustomer[]>([]);
@@ -25,6 +35,14 @@ const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
   const [isConnected, setIsConnected] = useState(false);
   const [checkingConnection, setCheckingConnection] = useState(true);
   const [zendeskSubdomain, setZendeskSubdomain] = useState<string | null>(null);
+
+  // Settings form state
+  const [showSettings, setShowSettings] = useState(false);
+  const [subdomain, setSubdomain] = useState('');
+  const [email, setEmail] = useState('');
+  const [apiToken, setApiToken] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
 
   // Check connection on mount
   useEffect(() => {
@@ -66,6 +84,44 @@ const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
       loadCustomers();
     }
   }, [isConnected, checkingConnection]);
+
+  // Handle save settings
+  const handleSaveSettings = async () => {
+    if (!subdomain || !email || !apiToken) {
+      setSettingsError('All fields are required');
+      return;
+    }
+
+    setSaving(true);
+    setSettingsError(null);
+
+    try {
+      await stripe.apps.secrets.create({
+        name: 'zendesk_subdomain',
+        payload: subdomain,
+        scope: { type: 'account' },
+      });
+      await stripe.apps.secrets.create({
+        name: 'zendesk_email',
+        payload: email,
+        scope: { type: 'account' },
+      });
+      await stripe.apps.secrets.create({
+        name: 'zendesk_api_token',
+        payload: apiToken,
+        scope: { type: 'account' },
+      });
+
+      setShowSettings(false);
+      setIsConnected(true);
+      setZendeskSubdomain(subdomain);
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+      setSettingsError('Failed to save settings. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleSelectCustomer = useCallback(async (customer: ZendeskCustomer) => {
     setSelectedCustomer(customer);
@@ -112,16 +168,68 @@ const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
             Connect to Zendesk
           </Box>
           <Box css={{ color: 'secondary', textAlign: 'center' }}>
-            Configure your Zendesk API credentials in the app settings to browse customers and tickets.
+            Configure your Zendesk API credentials to browse customers and tickets.
           </Box>
           <Button
             type="primary"
-            href="stripe://settings/com.example.zendesk-connector"
+            onPress={() => setShowSettings(true)}
           >
             <Icon name="settings" />
-            Open Settings
+            Configure Zendesk
           </Button>
         </Box>
+
+        <FocusView
+          title="Connect to Zendesk"
+          shown={showSettings}
+          onClose={() => setShowSettings(false)}
+          primaryAction={
+            <Button type="primary" onPress={handleSaveSettings} disabled={saving}>
+              {saving ? 'Saving...' : 'Save & Connect'}
+            </Button>
+          }
+          secondaryAction={
+            <Button onPress={() => setShowSettings(false)}>Cancel</Button>
+          }
+        >
+          <Box css={{ stack: 'y', gapY: 'large', padding: 'medium' }}>
+            {settingsError && (
+              <Banner type="critical" title="Error" description={settingsError} />
+            )}
+
+            <Box css={{ stack: 'y', gapY: 'medium' }}>
+              <TextField
+                label="Zendesk Subdomain"
+                placeholder="yourcompany"
+                description="From yourcompany.zendesk.com"
+                value={subdomain}
+                onChange={(e) => setSubdomain(e.target.value)}
+              />
+              <TextField
+                label="Email Address"
+                placeholder="admin@yourcompany.com"
+                description="Your Zendesk admin email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              <TextField
+                label="API Token"
+                placeholder="Enter your Zendesk API token"
+                description="Generate in Zendesk Admin > APIs > Zendesk API"
+                value={apiToken}
+                onChange={(e) => setApiToken(e.target.value)}
+              />
+            </Box>
+
+            <Button
+              href="https://support.zendesk.com/hc/en-us/articles/4408889192858-Generating-a-new-API-token"
+              type="secondary"
+            >
+              <Icon name="external" />
+              How to get an API token
+            </Button>
+          </Box>
+        </FocusView>
       </ContextView>
     );
   }
