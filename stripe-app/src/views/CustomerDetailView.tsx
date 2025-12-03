@@ -7,13 +7,12 @@ import {
   Link,
   Spinner,
   Badge,
-  FocusView,
   TextField,
   Banner,
 } from '@stripe/ui-extension-sdk/ui';
 import type { ExtensionContextValue } from '@stripe/ui-extension-sdk/context';
 import { useState, useEffect } from 'react';
-import { fetchZendeskCustomer, fetchZendeskTickets, checkZendeskConnection, getZendeskSubdomain } from '../api/zendesk';
+import { fetchZendeskCustomer, fetchZendeskTickets } from '../api/zendesk';
 import type { ZendeskCustomer, ZendeskTicket } from '../types';
 import { useZendeskOAuth } from '../hooks/useZendeskOAuth';
 
@@ -22,21 +21,15 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
   const [tickets, setTickets] = useState<ZendeskTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [zendeskSubdomain, setZendeskSubdomain] = useState<string | null>(null);
-  
-  // OAuth setup form state
-  const [showSetup, setShowSetup] = useState(false);
-  const [setupSubdomain, setSetupSubdomain] = useState('');
-  const [clientId, setClientId] = useState('');
+  const [inputSubdomain, setInputSubdomain] = useState('');
 
   // Use OAuth hook
   const {
     isConnected,
     isLoading: oauthLoading,
     error: oauthError,
-    authUrl,
-    subdomain: oauthSubdomain,
-    initializeOAuth,
+    subdomain,
+    initiateLogin,
     disconnect,
   } = useZendeskOAuth({
     oauthContext,
@@ -45,13 +38,6 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
 
   // Get customer email directly from Stripe's objectContext
   const stripeCustomerEmail = environment?.objectContext?.email as string | undefined;
-
-  // Update subdomain when OAuth provides it
-  useEffect(() => {
-    if (oauthSubdomain) {
-      setZendeskSubdomain(oauthSubdomain);
-    }
-  }, [oauthSubdomain]);
 
   // Load Zendesk data when connected and we have email
   useEffect(() => {
@@ -88,17 +74,10 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
     }
   }, [stripeCustomerEmail, isConnected, oauthLoading]);
 
-  // Handle OAuth setup
-  const handleStartSetup = async () => {
-    if (!setupSubdomain || !clientId) {
-      return;
+  const handleLogin = () => {
+    if (inputSubdomain.trim()) {
+      initiateLogin(inputSubdomain.trim());
     }
-    
-    await initializeOAuth({
-      subdomain: setupSubdomain,
-      clientId,
-    });
-    setShowSetup(false);
   };
 
   // Show loading while checking connection
@@ -134,73 +113,25 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
             Sign in with your Zendesk account to view customer support data.
           </Box>
           
-          {authUrl ? (
-            <Button type="primary" href={authUrl}>
-              <Icon name="external" />
-              Sign in with Zendesk
-            </Button>
-          ) : (
-            <Button type="primary" onPress={() => setShowSetup(true)}>
-              <Icon name="settings" />
-              Configure Zendesk
-            </Button>
-          )}
-          
-          <Box css={{ color: 'secondary', font: 'caption', textAlign: 'center' }}>
-            You'll need your Zendesk subdomain and OAuth client ID.
-          </Box>
-        </Box>
-
-        <FocusView
-          title="Connect to Zendesk"
-          shown={showSetup}
-          onClose={() => setShowSetup(false)}
-          primaryAction={
-            <Button 
-              type="primary" 
-              onPress={handleStartSetup} 
-              disabled={!setupSubdomain || !clientId}
-            >
-              Continue to Sign In
-            </Button>
-          }
-          secondaryAction={
-            <Button onPress={() => setShowSetup(false)}>Cancel</Button>
-          }
-        >
-          <Box css={{ stack: 'y', gapY: 'large', padding: 'medium' }}>
-            <Banner 
-              type="info" 
-              title="OAuth Setup Required"
-              description="First, create an OAuth client in Zendesk Admin Center under Apps and integrations > APIs > Zendesk API > OAuth Clients."
+          <Box css={{ width: 'fill' }}>
+            <TextField
+              label="Zendesk subdomain"
+              placeholder="yourcompany"
+              description="From yourcompany.zendesk.com"
+              value={inputSubdomain}
+              onChange={(e) => setInputSubdomain(e.target.value)}
             />
-
-            <Box css={{ stack: 'y', gapY: 'medium' }}>
-              <TextField
-                label="Zendesk Subdomain"
-                placeholder="yourcompany"
-                description="From yourcompany.zendesk.com"
-                value={setupSubdomain}
-                onChange={(e) => setSetupSubdomain(e.target.value)}
-              />
-              <TextField
-                label="OAuth Client ID"
-                placeholder="your-oauth-client-id"
-                description="Found in your OAuth client settings"
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-              />
-            </Box>
-
-            <Button
-              href="https://developer.zendesk.com/documentation/api-basics/authentication/using-oauth-to-authenticate-zendesk-api-requests-in-a-web-app/"
-              type="secondary"
-            >
-              <Icon name="external" />
-              OAuth Setup Guide
-            </Button>
           </Box>
-        </FocusView>
+
+          <Button 
+            type="primary" 
+            onPress={handleLogin}
+            disabled={!inputSubdomain.trim()}
+          >
+            <Icon name="external" />
+            Sign in with Zendesk
+          </Button>
+        </Box>
       </ContextView>
     );
   }
@@ -232,8 +163,8 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
               Searched for: {stripeCustomerEmail}
             </Box>
           )}
-          {zendeskSubdomain && (
-            <Button href={`https://${zendeskSubdomain}.zendesk.com`} type="secondary">
+          {subdomain && (
+            <Button href={`https://${subdomain}.zendesk.com`} type="secondary">
               <Icon name="external" />
               Open Zendesk
             </Button>
@@ -250,9 +181,9 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
     <ContextView
       title="Zendesk"
       actions={
-        zendeskSubdomain && (
+        subdomain && (
           <Button
-            href={`https://${zendeskSubdomain}.zendesk.com/agent/users/${zendeskCustomer.id}`}
+            href={`https://${subdomain}.zendesk.com/agent/users/${zendeskCustomer.id}`}
             type="secondary"
           >
             <Icon name="external" />
@@ -299,7 +230,7 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
           ) : (
             <Box css={{ stack: 'y', gapY: 'small' }}>
               {tickets.slice(0, 5).map((ticket) => (
-                <TicketRow key={ticket.id} ticket={ticket} subdomain={zendeskSubdomain} />
+                <TicketRow key={ticket.id} ticket={ticket} subdomain={subdomain} />
               ))}
             </Box>
           )}

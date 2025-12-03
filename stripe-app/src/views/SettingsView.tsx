@@ -8,37 +8,29 @@ import {
   Spinner,
 } from '@stripe/ui-extension-sdk/ui';
 import type { ExtensionContextValue } from '@stripe/ui-extension-sdk/context';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useZendeskOAuth } from '../hooks/useZendeskOAuth';
 
 const SettingsView = ({ userContext, oauthContext }: ExtensionContextValue) => {
-  const [setupSubdomain, setSetupSubdomain] = useState('');
-  const [clientId, setClientId] = useState('');
+  const [inputSubdomain, setInputSubdomain] = useState('');
 
   // Use OAuth hook
   const {
     isConnected,
     isLoading,
     error: oauthError,
-    authUrl,
     subdomain,
-    initializeOAuth,
+    initiateLogin,
     disconnect,
   } = useZendeskOAuth({
     oauthContext,
     userId: userContext?.id || '',
   });
 
-  // Handle OAuth setup
-  const handleStartSetup = async () => {
-    if (!setupSubdomain || !clientId) {
-      return;
+  const handleLogin = () => {
+    if (inputSubdomain.trim()) {
+      initiateLogin(inputSubdomain.trim());
     }
-    
-    await initializeOAuth({
-      subdomain: setupSubdomain,
-      clientId,
-    });
   };
 
   if (isLoading) {
@@ -70,7 +62,7 @@ const SettingsView = ({ userContext, oauthContext }: ExtensionContextValue) => {
               Connection Status
             </Box>
             <Box css={{ color: 'secondary' }}>
-              You're connected to <strong>{subdomain}.zendesk.com</strong>
+              Connected to {subdomain}.zendesk.com
             </Box>
           </Box>
 
@@ -115,69 +107,22 @@ const SettingsView = ({ userContext, oauthContext }: ExtensionContextValue) => {
           </Box>
         </Box>
 
-        {authUrl ? (
-          <Box css={{ stack: 'y', gapY: 'medium' }}>
-            <Banner
-              type="info"
-              title="Ready to Connect"
-              description="Click the button below to sign in with your Zendesk account."
-            />
-            <Button type="primary" href={authUrl}>
-              <Icon name="external" />
-              Sign in with Zendesk
-            </Button>
-          </Box>
-        ) : (
-          <Box css={{ stack: 'y', gapY: 'medium' }}>
-            <Banner
-              type="info"
-              title="OAuth Setup Required"
-              description="First, create an OAuth client in Zendesk Admin Center."
-            />
+        <Box css={{ stack: 'y', gapY: 'medium' }}>
+          <TextField
+            label="Zendesk subdomain"
+            placeholder="yourcompany"
+            description="From yourcompany.zendesk.com"
+            value={inputSubdomain}
+            onChange={(e) => setInputSubdomain(e.target.value)}
+          />
 
-            <TextField
-              label="Zendesk Subdomain"
-              placeholder="yourcompany"
-              description="The subdomain from your Zendesk URL (e.g., 'yourcompany' from yourcompany.zendesk.com)"
-              value={setupSubdomain}
-              onChange={(e) => setSetupSubdomain(e.target.value)}
-            />
-
-            <TextField
-              label="OAuth Client ID"
-              placeholder="your-oauth-client-id"
-              description="Found in Zendesk Admin > Apps and integrations > APIs > Zendesk API > OAuth Clients"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-            />
-
-            <Button
-              type="primary"
-              onPress={handleStartSetup}
-              disabled={!setupSubdomain || !clientId}
-            >
-              Continue to Sign In
-            </Button>
-          </Box>
-        )}
-
-        <Box css={{ stack: 'y', gapY: 'small', marginTop: 'large' }}>
-          <Box css={{ font: 'subheading', fontWeight: 'semibold' }}>
-            How to set up OAuth
-          </Box>
-          <Box css={{ color: 'secondary', font: 'caption', stack: 'y', gapY: 'xsmall' }}>
-            <Box>1. Log in to your Zendesk Admin Center</Box>
-            <Box>2. Go to Apps and integrations → APIs → Zendesk API</Box>
-            <Box>3. Click "OAuth Clients" tab, then "Add OAuth client"</Box>
-            <Box>4. Set the Redirect URL to: https://dashboard.stripe.com/apps-oauth/com.example.zendesk-connector</Box>
-            <Box>5. Copy the Client ID and paste it above</Box>
-          </Box>
           <Button
-            href="https://developer.zendesk.com/documentation/api-basics/authentication/using-oauth-to-authenticate-zendesk-api-requests-in-a-web-app/"
-            type="secondary"
+            type="primary"
+            onPress={handleLogin}
+            disabled={!inputSubdomain.trim()}
           >
             <Icon name="external" />
-            OAuth Setup Guide
+            Sign in with Zendesk
           </Button>
         </Box>
       </Box>

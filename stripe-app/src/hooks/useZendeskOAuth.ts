@@ -8,10 +8,9 @@ const stripe = new Stripe(STRIPE_API_KEY, {
   apiVersion: '2023-10-16',
 });
 
-interface OAuthConfig {
-  subdomain: string;
-  clientId: string;
-}
+// Configure your OAuth client ID here (created in Zendesk Admin Center)
+const ZENDESK_CLIENT_ID = 'your-zendesk-oauth-client-id';
+const STRIPE_APP_ID = 'com.example.zendesk-connector';
 
 interface UseZendeskOAuthProps {
   oauthContext?: {
@@ -26,18 +25,16 @@ interface UseZendeskOAuthReturn {
   isConnected: boolean;
   isLoading: boolean;
   error: string | null;
-  authUrl: string | null;
   subdomain: string | null;
   accessToken: string | null;
   disconnect: () => Promise<void>;
-  initializeOAuth: (config: OAuthConfig) => Promise<void>;
+  initiateLogin: (subdomain: string) => Promise<void>;
 }
 
 export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps): UseZendeskOAuthReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [authUrl, setAuthUrl] = useState<string | null>(null);
   const [subdomain, setSubdomain] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const credentialsUsed = useRef(false);
@@ -58,7 +55,6 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
 
         const storedToken = secrets.data.find(s => s.name === 'zendesk_access_token')?.payload;
         const storedSubdomain = secrets.data.find(s => s.name === 'zendesk_subdomain')?.payload;
-        const storedClientId = secrets.data.find(s => s.name === 'zendesk_client_id')?.payload;
 
         if (storedToken && storedSubdomain) {
           setAccessToken(storedToken);
@@ -69,7 +65,7 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
         }
 
         // Handle OAuth callback - exchange code for token
-        if (code && verifier && !credentialsUsed.current && storedSubdomain && storedClientId) {
+        if (code && verifier && !credentialsUsed.current && storedSubdomain) {
           credentialsUsed.current = true;
           
           const tokenResponse = await fetch(`https://${storedSubdomain}.zendesk.com/oauth/tokens`, {
@@ -80,9 +76,9 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
             body: JSON.stringify({
               grant_type: 'authorization_code',
               code,
-              client_id: storedClientId,
+              client_id: ZENDESK_CLIENT_ID,
               code_verifier: verifier,
-              redirect_uri: `https://dashboard.stripe.com/apps-oauth/${process.env.STRIPE_APP_ID || 'com.example.zendesk-connector'}`,
+              redirect_uri: `https://dashboard.stripe.com/apps-oauth/${STRIPE_APP_ID}`,
             }),
           });
 
@@ -122,49 +118,43 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
     }
   }, [oauthError]);
 
-  // Initialize OAuth flow - store config and generate auth URL
-  const initializeOAuth = async (config: OAuthConfig) => {
+  // Initiate OAuth login - just needs subdomain
+  const initiateLogin = async (userSubdomain: string) => {
     try {
       setIsLoading(true);
       setError(null);
 
-      // Store subdomain and client ID for later use
+      // Store subdomain for later use in token exchange
       await stripe.apps.secrets.create({
         name: 'zendesk_subdomain',
-        payload: config.subdomain,
-        scope: { type: 'account' },
-      });
-      
-      await stripe.apps.secrets.create({
-        name: 'zendesk_client_id',
-        payload: config.clientId,
+        payload: userSubdomain,
         scope: { type: 'account' },
       });
 
-      setSubdomain(config.subdomain);
+      setSubdomain(userSubdomain);
 
       // Generate PKCE state and challenge
       const { state, challenge } = await createOAuthState();
 
-      // Build authorization URL
+      // Build authorization URL and redirect
       const redirectUri = encodeURIComponent(
-        `https://dashboard.stripe.com/apps-oauth/${process.env.STRIPE_APP_ID || 'com.example.zendesk-connector'}`
+        `https://dashboard.stripe.com/apps-oauth/${STRIPE_APP_ID}`
       );
       
-      const authorizationUrl = `https://${config.subdomain}.zendesk.com/oauth/authorizations/new?` +
+      const authorizationUrl = `https://${userSubdomain}.zendesk.com/oauth/authorizations/new?` +
         `response_type=code&` +
-        `client_id=${encodeURIComponent(config.clientId)}&` +
+        `client_id=${encodeURIComponent(ZENDESK_CLIENT_ID)}&` +
         `redirect_uri=${redirectUri}&` +
         `scope=${encodeURIComponent('read write')}&` +
         `state=${state}&` +
         `code_challenge=${challenge}&` +
         `code_challenge_method=S256`;
 
-      setAuthUrl(authorizationUrl);
+      // Redirect to Zendesk OAuth
+      window.open(authorizationUrl, '_top');
     } catch (err) {
-      console.error('Failed to initialize OAuth:', err);
-      setError(err instanceof Error ? err.message : 'Failed to initialize OAuth');
-    } finally {
+      console.error('Failed to initiate OAuth:', err);
+      setError(err instanceof Error ? err.message : 'Failed to start login');
       setIsLoading(false);
     }
   };
@@ -174,8 +164,7 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
     try {
       setIsLoading(true);
       
-      // Delete all Zendesk secrets
-      const secretNames = ['zendesk_access_token', 'zendesk_subdomain', 'zendesk_client_id'];
+      const secretNames = ['zendesk_access_token', 'zendesk_subdomain'];
       
       for (const name of secretNames) {
         try {
@@ -191,7 +180,6 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
       setIsConnected(false);
       setAccessToken(null);
       setSubdomain(null);
-      setAuthUrl(null);
       credentialsUsed.current = false;
     } catch (err) {
       console.error('Failed to disconnect:', err);
@@ -205,10 +193,9 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
     isConnected,
     isLoading,
     error,
-    authUrl,
     subdomain,
     accessToken,
     disconnect,
-    initializeOAuth,
+    initiateLogin,
   };
 }
