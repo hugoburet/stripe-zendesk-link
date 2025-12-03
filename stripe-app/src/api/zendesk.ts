@@ -10,12 +10,11 @@ const stripe = new Stripe(STRIPE_API_KEY, {
 
 interface ZendeskCredentials {
   subdomain: string;
-  email: string;
-  apiToken: string;
+  accessToken: string;
 }
 
 /**
- * Get Zendesk credentials from Stripe Secret Store
+ * Get Zendesk credentials from Stripe Secret Store (OAuth tokens)
  */
 async function getZendeskCredentials(): Promise<ZendeskCredentials | null> {
   try {
@@ -25,14 +24,13 @@ async function getZendeskCredentials(): Promise<ZendeskCredentials | null> {
     });
 
     const subdomain = secrets.data.find(s => s.name === 'zendesk_subdomain')?.payload;
-    const email = secrets.data.find(s => s.name === 'zendesk_email')?.payload;
-    const apiToken = secrets.data.find(s => s.name === 'zendesk_api_token')?.payload;
+    const accessToken = secrets.data.find(s => s.name === 'zendesk_access_token')?.payload;
 
-    if (!subdomain || !email || !apiToken) {
+    if (!subdomain || !accessToken) {
       return null;
     }
 
-    return { subdomain, email, apiToken };
+    return { subdomain, accessToken };
   } catch (error) {
     console.error('Error fetching Zendesk credentials:', error);
     return null;
@@ -40,19 +38,18 @@ async function getZendeskCredentials(): Promise<ZendeskCredentials | null> {
 }
 
 /**
- * Make an authenticated request to Zendesk API
+ * Make an authenticated request to Zendesk API using OAuth token
  */
 async function zendeskFetch<T>(
   credentials: ZendeskCredentials,
   endpoint: string
 ): Promise<T> {
-  const { subdomain, email, apiToken } = credentials;
+  const { subdomain, accessToken } = credentials;
   const baseUrl = `https://${subdomain}.zendesk.com/api/v2`;
-  const auth = btoa(`${email}/token:${apiToken}`);
 
   const response = await fetch(`${baseUrl}${endpoint}`, {
     headers: {
-      'Authorization': `Basic ${auth}`,
+      'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
   });

@@ -14,55 +14,36 @@ import {
 } from '@stripe/ui-extension-sdk/ui';
 import type { ExtensionContextValue } from '@stripe/ui-extension-sdk/context';
 import { useState, useEffect, useCallback } from 'react';
-import { fetchAllZendeskCustomers, fetchZendeskTickets, checkZendeskConnection, getZendeskSubdomain } from '../api/zendesk';
+import { fetchAllZendeskCustomers, fetchZendeskTickets } from '../api/zendesk';
 import type { ZendeskCustomer, ZendeskTicket } from '../types';
-import { createHttpClient, STRIPE_API_KEY } from '@stripe/ui-extension-sdk/http_client';
-import Stripe from 'stripe';
+import { useZendeskOAuth } from '../hooks/useZendeskOAuth';
 
-// Create Stripe client for saving secrets
-const stripe = new Stripe(STRIPE_API_KEY, {
-  httpClient: createHttpClient(),
-  apiVersion: '2023-10-16',
-});
-
-const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
+const AppDrawerView = ({ userContext, environment, oauthContext }: ExtensionContextValue) => {
   const [customers, setCustomers] = useState<ZendeskCustomer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<ZendeskCustomer | null>(null);
   const [tickets, setTickets] = useState<ZendeskTicket[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [ticketsLoading, setTicketsLoading] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const [checkingConnection, setCheckingConnection] = useState(true);
-  const [zendeskSubdomain, setZendeskSubdomain] = useState<string | null>(null);
 
-  // Settings form state
-  const [showSettings, setShowSettings] = useState(false);
-  const [subdomain, setSubdomain] = useState('');
-  const [email, setEmail] = useState('');
-  const [apiToken, setApiToken] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [settingsError, setSettingsError] = useState<string | null>(null);
+  // OAuth setup form state
+  const [showSetup, setShowSetup] = useState(false);
+  const [setupSubdomain, setSetupSubdomain] = useState('');
+  const [clientId, setClientId] = useState('');
 
-  // Check connection on mount
-  useEffect(() => {
-    async function checkConnection() {
-      try {
-        const connected = await checkZendeskConnection();
-        setIsConnected(connected);
-        if (connected) {
-          const subdomain = await getZendeskSubdomain();
-          setZendeskSubdomain(subdomain);
-        }
-      } catch (err) {
-        console.error('Failed to check connection:', err);
-        setIsConnected(false);
-      } finally {
-        setCheckingConnection(false);
-      }
-    }
-    checkConnection();
-  }, []);
+  // Use OAuth hook
+  const {
+    isConnected,
+    isLoading: oauthLoading,
+    error: oauthError,
+    authUrl,
+    subdomain: zendeskSubdomain,
+    initializeOAuth,
+    disconnect,
+  } = useZendeskOAuth({
+    oauthContext,
+    userId: userContext?.id || '',
+  });
 
   // Load customers when connected
   useEffect(() => {
@@ -80,47 +61,24 @@ const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
       }
     }
     
-    if (!checkingConnection && isConnected) {
+    if (!oauthLoading && isConnected) {
       loadCustomers();
+    } else if (!oauthLoading) {
+      setLoading(false);
     }
-  }, [isConnected, checkingConnection]);
+  }, [isConnected, oauthLoading]);
 
-  // Handle save settings
-  const handleSaveSettings = async () => {
-    if (!subdomain || !email || !apiToken) {
-      setSettingsError('All fields are required');
+  // Handle OAuth setup
+  const handleStartSetup = async () => {
+    if (!setupSubdomain || !clientId) {
       return;
     }
-
-    setSaving(true);
-    setSettingsError(null);
-
-    try {
-      await stripe.apps.secrets.create({
-        name: 'zendesk_subdomain',
-        payload: subdomain,
-        scope: { type: 'account' },
-      });
-      await stripe.apps.secrets.create({
-        name: 'zendesk_email',
-        payload: email,
-        scope: { type: 'account' },
-      });
-      await stripe.apps.secrets.create({
-        name: 'zendesk_api_token',
-        payload: apiToken,
-        scope: { type: 'account' },
-      });
-
-      setShowSettings(false);
-      setIsConnected(true);
-      setZendeskSubdomain(subdomain);
-    } catch (err) {
-      console.error('Failed to save settings:', err);
-      setSettingsError('Failed to save settings. Please try again.');
-    } finally {
-      setSaving(false);
-    }
+    
+    await initializeOAuth({
+      subdomain: setupSubdomain,
+      clientId,
+    });
+    setShowSetup(false);
   };
 
   const handleSelectCustomer = useCallback(async (customer: ZendeskCustomer) => {
@@ -143,7 +101,7 @@ const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
   );
 
   // Show loading while checking connection
-  if (checkingConnection) {
+  if (oauthLoading) {
     return (
       <ContextView title="Zendesk Customers">
         <Box css={{ padding: 'large', stack: 'y', alignX: 'center' }}>
@@ -161,6 +119,10 @@ const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
     return (
       <ContextView title="Zendesk Customers">
         <Box css={{ padding: 'medium', stack: 'y', gapY: 'medium', alignX: 'center' }}>
+          {oauthError && (
+            <Banner type="critical" title="Connection Error" description={oauthError} />
+          )}
+          
           <Box css={{ textAlign: 'center' }}>
             <Icon name="settings" size="large" />
           </Box>
@@ -168,65 +130,69 @@ const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
             Connect to Zendesk
           </Box>
           <Box css={{ color: 'secondary', textAlign: 'center' }}>
-            Configure your Zendesk API credentials to browse customers and tickets.
+            Sign in with your Zendesk account to browse customers and tickets.
           </Box>
-          <Button
-            type="primary"
-            onPress={() => setShowSettings(true)}
-          >
-            <Icon name="settings" />
-            Configure Zendesk
-          </Button>
+          
+          {authUrl ? (
+            <Button type="primary" href={authUrl}>
+              <Icon name="external" />
+              Sign in with Zendesk
+            </Button>
+          ) : (
+            <Button type="primary" onPress={() => setShowSetup(true)}>
+              <Icon name="settings" />
+              Configure Zendesk
+            </Button>
+          )}
         </Box>
 
         <FocusView
           title="Connect to Zendesk"
-          shown={showSettings}
-          onClose={() => setShowSettings(false)}
+          shown={showSetup}
+          onClose={() => setShowSetup(false)}
           primaryAction={
-            <Button type="primary" onPress={handleSaveSettings} disabled={saving}>
-              {saving ? 'Saving...' : 'Save & Connect'}
+            <Button 
+              type="primary" 
+              onPress={handleStartSetup} 
+              disabled={!setupSubdomain || !clientId}
+            >
+              Continue to Sign In
             </Button>
           }
           secondaryAction={
-            <Button onPress={() => setShowSettings(false)}>Cancel</Button>
+            <Button onPress={() => setShowSetup(false)}>Cancel</Button>
           }
         >
           <Box css={{ stack: 'y', gapY: 'large', padding: 'medium' }}>
-            {settingsError && (
-              <Banner type="critical" title="Error" description={settingsError} />
-            )}
+            <Banner 
+              type="info" 
+              title="OAuth Setup Required"
+              description="First, create an OAuth client in Zendesk Admin Center under Apps and integrations > APIs > Zendesk API > OAuth Clients."
+            />
 
             <Box css={{ stack: 'y', gapY: 'medium' }}>
               <TextField
                 label="Zendesk Subdomain"
                 placeholder="yourcompany"
                 description="From yourcompany.zendesk.com"
-                value={subdomain}
-                onChange={(e) => setSubdomain(e.target.value)}
+                value={setupSubdomain}
+                onChange={(e) => setSetupSubdomain(e.target.value)}
               />
               <TextField
-                label="Email Address"
-                placeholder="admin@yourcompany.com"
-                description="Your Zendesk admin email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <TextField
-                label="API Token"
-                placeholder="Enter your Zendesk API token"
-                description="Generate in Zendesk Admin > APIs > Zendesk API"
-                value={apiToken}
-                onChange={(e) => setApiToken(e.target.value)}
+                label="OAuth Client ID"
+                placeholder="your-oauth-client-id"
+                description="Found in your OAuth client settings"
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
               />
             </Box>
 
             <Button
-              href="https://support.zendesk.com/hc/en-us/articles/4408889192858-Generating-a-new-API-token"
+              href="https://developer.zendesk.com/documentation/api-basics/authentication/using-oauth-to-authenticate-zendesk-api-requests-in-a-web-app/"
               type="secondary"
             >
               <Icon name="external" />
-              How to get an API token
+              OAuth Setup Guide
             </Button>
           </Box>
         </FocusView>
@@ -326,7 +292,14 @@ const AppDrawerView = ({ userContext, environment }: ExtensionContextValue) => {
 
   // Customer List View
   return (
-    <ContextView title="Zendesk Customers">
+    <ContextView 
+      title="Zendesk Customers"
+      actions={
+        <Button type="secondary" onPress={disconnect}>
+          Disconnect
+        </Button>
+      }
+    >
       <Box css={{ stack: 'y', gapY: 'medium', padding: 'medium' }}>
         <TextField
           label="Search customers"
