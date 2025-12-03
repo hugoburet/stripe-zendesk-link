@@ -150,6 +150,12 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
         `code_challenge=${challenge}&` +
         `code_challenge_method=S256`;
 
+      // Reset loading after a short delay if redirect doesn't happen
+      // (e.g., in sandbox/demo environment where window.open may not work)
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 2000);
+
       // Redirect to Zendesk OAuth
       window.open(authorizationUrl, '_top');
     } catch (err) {
