@@ -3,7 +3,7 @@
     "webhooks": null
   },
   "connect_permissions": null,
-  "icon": "./icon.svg",
+  "icon": "./icon.png",
   "id": "com.example.zendesk-connector",
   "name": "Zendesk Connector",
   "permissions": [
