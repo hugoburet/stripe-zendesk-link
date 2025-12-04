@@ -35,10 +35,6 @@
         "viewport": "stripe.dashboard.customer.detail"
       },
       {
-        "component": "AppDrawerView",
-        "viewport": "stripe.dashboard.drawer"
-      },
-      {
         "component": "SettingsView",
         "viewport": "stripe.dashboard.settings.page"
       }
