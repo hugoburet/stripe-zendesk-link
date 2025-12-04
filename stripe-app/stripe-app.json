@@ -34,10 +34,8 @@
     "actions": [],
     "content_security_policy": {
       "connect-src": [
-        "https://*.zendesk.com",
-        "https://*.zendesk.com/*",
-        "https://*.supabase.co",
-        "https://*.supabase.co/*"
+        "https://zsjcivwjghcroaoofnfr.supabase.co/",
+        "https://zsjcivwjghcroaoofnfr.functions.supabase.co/"
       ],
       "image-src": null
     }
