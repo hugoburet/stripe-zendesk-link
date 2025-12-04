@@ -22,10 +22,12 @@
   "ui_extension": {
     "content_security_policy": {
       "connect-src": [
-        "https://zsjcivwjghcroaoofnfr.supabase.co/",
-        "https://zsjcivwjghcroaoofnfr.functions.supabase.co/"
+        "https://zsjcivwjghcroaoofnfr.supabase.co/rest/v1/",
+        "https://zsjcivwjghcroaoofnfr.supabase.co/auth/v1/",
+        "https://zsjcivwjghcroaoofnfr.functions.supabase.co/stripe-app-auth"
       ],
-      "image-src": null
+      "image-src": null,
+      "purpose": "Connect to backend services for Zendesk authentication and data synchronization"
     },
     "views": [
       {
