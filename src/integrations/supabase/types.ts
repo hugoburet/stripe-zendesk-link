@@ -14,7 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          updated_at: string
+          user_id: string
+          zendesk_connected: boolean | null
+          zendesk_subdomain: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          updated_at?: string
+          user_id: string
+          zendesk_connected?: boolean | null
+          zendesk_subdomain?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+          zendesk_connected?: boolean | null
+          zendesk_subdomain?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
