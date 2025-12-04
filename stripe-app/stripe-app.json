@@ -34,8 +34,8 @@
     "actions": [],
     "content_security_policy": {
       "connect-src": [
-        "https://zsjcivwjghcroaoofnfr.supabase.co/",
-        "https://zsjcivwjghcroaoofnfr.functions.supabase.co/"
+        "https://zsjcivwjghcroaoofnfr.supabase.co",
+        "https://zsjcivwjghcroaoofnfr.functions.supabase.co"
       ],
       "image-src": null
     }
