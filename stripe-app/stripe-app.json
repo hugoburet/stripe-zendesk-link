@@ -1,8 +1,11 @@
 {
-  "id": "com.example.zendesk-connector",
-  "version": "0.0.1",
-  "name": "Zendesk Connector",
+  "app_backend": {
+    "webhooks": null
+  },
+  "connect_permissions": null,
   "icon": "./icon.svg",
+  "id": "com.example.zendesk-connector",
+  "name": "Zendesk Connector",
   "permissions": [
     {
       "permission": "customer_read",
@@ -13,25 +16,10 @@
       "purpose": "Store Zendesk API credentials securely"
     }
   ],
-  "app_backend": {
-    "webhooks": null
+  "post_install_action": {
+    "type": "settings"
   },
   "ui_extension": {
-    "views": [
-      {
-        "viewport": "stripe.dashboard.customer.detail",
-        "component": "CustomerDetailView"
-      },
-      {
-        "viewport": "stripe.dashboard.drawer",
-        "component": "AppDrawerView"
-      },
-      {
-        "viewport": "stripe.dashboard.settings.page",
-        "component": "SettingsView"
-      }
-    ],
-    "actions": [],
     "content_security_policy": {
       "connect-src": [
         "https://zsjcivwjghcroaoofnfr.supabase.co/*",
@@ -39,9 +27,21 @@
         "https://*.zendesk.com/*"
       ],
       "image-src": null
-    }
+    },
+    "views": [
+      {
+        "component": "CustomerDetailView",
+        "viewport": "stripe.dashboard.customer.detail"
+      },
+      {
+        "component": "AppDrawerView",
+        "viewport": "stripe.dashboard.drawer"
+      },
+      {
+        "component": "SettingsView",
+        "viewport": "stripe.dashboard.settings.page"
+      }
+    ]
   },
-  "post_install_action": {
-    "type": "settings"
-  }
+  "version": "0.0.1"
 }
