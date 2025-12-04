@@ -284,13 +284,15 @@ const AppDrawerView = ({ userContext, oauthContext }: ExtensionContextValue) => 
 
           {subdomain && (
             <Box css={{ marginTop: 'medium' }}>
-              <Button
+              <Link
                 href={`https://${subdomain}.zendesk.com/agent/users/${selectedCustomer.id}`}
-                type="primary"
+                external
               >
-                <Icon name="external" />
-                View in Zendesk
-              </Button>
+                <Inline css={{ gapX: 'xsmall', alignY: 'center' }}>
+                  <Icon name="external" />
+                  View in Zendesk
+                </Inline>
+              </Link>
             </Box>
           )}
         </Box>
