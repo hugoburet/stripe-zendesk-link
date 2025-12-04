@@ -16,8 +16,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchAllZendeskCustomers, fetchZendeskTickets } from '../api/zendesk';
 import type { ZendeskCustomer, ZendeskTicket } from '../types';
 import { useZendeskOAuth } from '../hooks/useZendeskOAuth';
+import WelcomeView from './WelcomeView';
+
+// Demo mode flag
+const DEMO_MODE = true;
 
 const AppDrawerView = ({ userContext, oauthContext }: ExtensionContextValue) => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
   const [customers, setCustomers] = useState<ZendeskCustomer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<ZendeskCustomer | null>(null);
   const [tickets, setTickets] = useState<ZendeskTicket[]>([]);
@@ -38,6 +44,26 @@ const AppDrawerView = ({ userContext, oauthContext }: ExtensionContextValue) => 
     oauthContext,
     userId: userContext?.id || '',
   });
+
+  // Check for existing auth session
+  useEffect(() => {
+    const checkAuth = () => {
+      const storedUserId = localStorage.getItem('zendesk_connector_user_id');
+      setIsAuthenticated(!!storedUserId);
+      setAuthLoading(false);
+    };
+    checkAuth();
+  }, []);
+
+  const handleAuthenticated = useCallback((userId: string) => {
+    setIsAuthenticated(true);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('zendesk_connector_user_id');
+    localStorage.removeItem('zendesk_connector_email');
+    setIsAuthenticated(false);
+  }, []);
 
   // Load customers when connected
   useEffect(() => {
@@ -87,24 +113,56 @@ const AppDrawerView = ({ userContext, oauthContext }: ExtensionContextValue) => 
       c.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Show loading while checking connection
-  if (oauthLoading) {
+  // Show loading while checking auth
+  if (authLoading) {
     return (
-      <ContextView title="Zendesk Customers">
+      <ContextView title="Zendesk Connector">
         <Box css={{ padding: 'large', stack: 'y', alignX: 'center' }}>
           <Spinner size="large" />
           <Box css={{ marginTop: 'small', color: 'secondary' }}>
-            Checking connection...
+            Loading...
           </Box>
         </Box>
       </ContextView>
     );
   }
 
-  // Show connect prompt if not connected
-  if (!isConnected) {
+  // Show Welcome/Auth screen if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <WelcomeView
+        userContext={userContext}
+        oauthContext={oauthContext}
+        onAuthenticated={handleAuthenticated}
+      />
+    );
+  }
+
+  // Show loading while checking Zendesk connection
+  if (oauthLoading) {
     return (
       <ContextView title="Zendesk Customers">
+        <Box css={{ padding: 'large', stack: 'y', alignX: 'center' }}>
+          <Spinner size="large" />
+          <Box css={{ marginTop: 'small', color: 'secondary' }}>
+            Checking Zendesk connection...
+          </Box>
+        </Box>
+      </ContextView>
+    );
+  }
+
+  // Show Zendesk connect prompt if authenticated but not connected to Zendesk
+  if (!isConnected) {
+    return (
+      <ContextView 
+        title="Connect Zendesk"
+        actions={
+          <Button type="secondary" onPress={handleLogout}>
+            Sign Out
+          </Button>
+        }
+      >
         <Box css={{ padding: 'medium', stack: 'y', gapY: 'medium', alignX: 'center' }}>
           {oauthError && (
             <Banner type="critical" title="Connection Error" description={oauthError} />
@@ -117,7 +175,7 @@ const AppDrawerView = ({ userContext, oauthContext }: ExtensionContextValue) => 
             Connect to Zendesk
           </Box>
           <Box css={{ color: 'secondary', textAlign: 'center' }}>
-            Sign in with your Zendesk account to browse customers and tickets.
+            Now connect your Zendesk account to view customer profiles and support tickets.
           </Box>
           
           <Box css={{ width: 'fill' }}>
@@ -238,9 +296,14 @@ const AppDrawerView = ({ userContext, oauthContext }: ExtensionContextValue) => 
     <ContextView 
       title="Zendesk Customers"
       actions={
-        <Button type="secondary" onPress={disconnect}>
-          Disconnect
-        </Button>
+        <Box css={{ stack: 'x', gapX: 'small' }}>
+          <Button type="secondary" onPress={disconnect}>
+            Disconnect Zendesk
+          </Button>
+          <Button type="secondary" onPress={handleLogout}>
+            Sign Out
+          </Button>
+        </Box>
       }
     >
       <Box css={{ stack: 'y', gapY: 'medium', padding: 'medium' }}>
