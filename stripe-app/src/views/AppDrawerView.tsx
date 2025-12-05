@@ -49,9 +49,12 @@ const AppDrawerView = ({ userContext, oauthContext }: ExtensionContextValue) => 
   useEffect(() => {
     const checkAuth = () => {
       const storedUserId = localStorage.getItem('zendesk_connector_user_id');
-      console.log('[ZendeskConnector] Auth check - storedUserId:', storedUserId);
-      // Only authenticate if we have a valid stored user ID
-      setIsAuthenticated(!!storedUserId && storedUserId.length > 0);
+      const storedEmail = localStorage.getItem('zendesk_connector_email');
+      console.log('[ZendeskConnector] Auth check - storedUserId:', storedUserId, 'storedEmail:', storedEmail);
+      // Only authenticate if we have BOTH a valid stored user ID AND email
+      const hasValidAuth = !!(storedUserId && storedUserId.length > 0 && storedEmail && storedEmail.length > 0);
+      console.log('[ZendeskConnector] Setting isAuthenticated to:', hasValidAuth);
+      setIsAuthenticated(hasValidAuth);
       setAuthLoading(false);
     };
     checkAuth();
@@ -62,10 +65,13 @@ const AppDrawerView = ({ userContext, oauthContext }: ExtensionContextValue) => 
   }, []);
 
   const handleLogout = useCallback(() => {
+    console.log('[ZendeskConnector] Logging out - clearing localStorage');
     localStorage.removeItem('zendesk_connector_user_id');
     localStorage.removeItem('zendesk_connector_email');
     setIsAuthenticated(false);
-  }, []);
+    // Also disconnect from Zendesk
+    disconnect();
+  }, [disconnect]);
 
   // Load customers when connected
   useEffect(() => {
