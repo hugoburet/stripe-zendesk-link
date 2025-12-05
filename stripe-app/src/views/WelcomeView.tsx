@@ -32,8 +32,10 @@ const WelcomeView = ({ userContext, onAuthenticated }: WelcomeViewProps) => {
   // Check for existing session in localStorage
   useEffect(() => {
     const storedUserId = localStorage.getItem('zendesk_connector_user_id');
-    console.log('[ZendeskConnector] WelcomeView - storedUserId:', storedUserId);
-    if (storedUserId && storedUserId.length > 0) {
+    const storedEmail = localStorage.getItem('zendesk_connector_email');
+    console.log('[ZendeskConnector] WelcomeView - storedUserId:', storedUserId, 'storedEmail:', storedEmail);
+    // Only auto-authenticate if BOTH userId AND email are stored
+    if (storedUserId && storedUserId.length > 0 && storedEmail && storedEmail.length > 0) {
       onAuthenticated(storedUserId);
     }
   }, [onAuthenticated]);
