@@ -51,7 +51,13 @@ const SettingsView = ({ userContext, oauthContext }: ExtensionContextValue) => {
     const storedEmail = localStorage.getItem('zendesk_connector_email');
     console.log('[ZendeskConnector] Settings - Auth check - userId:', storedUserId, 'email:', storedEmail);
     
+    // DEBUG: Force show welcome screen by clearing any existing auth
+    // Remove these lines after testing:
+    // localStorage.removeItem('zendesk_connector_user_id');
+    // localStorage.removeItem('zendesk_connector_email');
+    
     const hasValidAuth = !!(storedUserId && storedUserId.length > 0 && storedEmail && storedEmail.length > 0);
+    console.log('[ZendeskConnector] hasValidAuth:', hasValidAuth);
     setIsAuthenticated(hasValidAuth);
     setAuthLoading(false);
   }, []);
@@ -290,8 +296,8 @@ const SettingsView = ({ userContext, oauthContext }: ExtensionContextValue) => {
     <ContextView 
       title="Connect Zendesk"
       actions={
-        <Button type="secondary" onPress={handleLogout}>
-          Sign Out
+        <Button type="destructive" onPress={handleLogout}>
+          Reset & Sign Out
         </Button>
       }
     >
@@ -299,6 +305,12 @@ const SettingsView = ({ userContext, oauthContext }: ExtensionContextValue) => {
         {oauthError && (
           <Banner type="critical" title="Connection Error" description={oauthError} />
         )}
+        
+        <Banner 
+          type="default" 
+          title="Logged in" 
+          description={`Signed in as: ${localStorage.getItem('zendesk_connector_email') || 'unknown'}`} 
+        />
         
         <Box css={{ textAlign: 'center' }}>
           <Icon name="settings" size="large" />
