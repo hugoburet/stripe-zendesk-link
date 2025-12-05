@@ -32,7 +32,8 @@ const WelcomeView = ({ userContext, onAuthenticated }: WelcomeViewProps) => {
   // Check for existing session in localStorage
   useEffect(() => {
     const storedUserId = localStorage.getItem('zendesk_connector_user_id');
-    if (storedUserId) {
+    console.log('[ZendeskConnector] WelcomeView - storedUserId:', storedUserId);
+    if (storedUserId && storedUserId.length > 0) {
       onAuthenticated(storedUserId);
     }
   }, [onAuthenticated]);

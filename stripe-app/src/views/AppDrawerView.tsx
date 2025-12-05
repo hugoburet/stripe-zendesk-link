@@ -48,15 +48,10 @@ const AppDrawerView = ({ userContext, oauthContext }: ExtensionContextValue) => 
   // Check for existing auth session
   useEffect(() => {
     const checkAuth = () => {
-      // In demo mode, always start with WelcomeView
-      if (DEMO_MODE) {
-        const storedUserId = localStorage.getItem('zendesk_connector_user_id');
-        setIsAuthenticated(!!storedUserId);
-      } else {
-        // For real auth, check localStorage
-        const storedUserId = localStorage.getItem('zendesk_connector_user_id');
-        setIsAuthenticated(!!storedUserId);
-      }
+      const storedUserId = localStorage.getItem('zendesk_connector_user_id');
+      console.log('[ZendeskConnector] Auth check - storedUserId:', storedUserId);
+      // Only authenticate if we have a valid stored user ID
+      setIsAuthenticated(!!storedUserId && storedUserId.length > 0);
       setAuthLoading(false);
     };
     checkAuth();
