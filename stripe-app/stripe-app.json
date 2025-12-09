@@ -27,7 +27,6 @@
         "https://zsjcivwjghcroaoofnfr.supabase.co/auth/v1/",
         "https://zsjcivwjghcroaoofnfr.functions.supabase.co/stripe-app-auth"
       ],
-      "image-src": null,
       "purpose": "Connect to backend services for Zendesk authentication and data synchronization"
     },
     "views": [
