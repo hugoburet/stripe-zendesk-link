@@ -143,32 +143,50 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
       setIsLoading(true);
       setError(null);
 
+      // Validate inputs
+      const trimmedSubdomain = userSubdomain?.trim();
+      const trimmedEmail = email?.trim();
+      
+      if (!trimmedSubdomain) {
+        throw new Error('Zendesk subdomain is required');
+      }
+      if (!trimmedEmail) {
+        throw new Error('Email is required');
+      }
+
       // Demo mode: simulate successful connection (in-memory only)
       if (DEMO_MODE) {
-        await new Promise(resolve => setTimeout(resolve, 500)); // Brief delay for UX
-        setSubdomain(userSubdomain);
-        setUserEmail(email);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setSubdomain(trimmedSubdomain);
+        setUserEmail(trimmedEmail);
         setAccessToken('demo-token');
         setIsConnected(true);
         setIsLoading(false);
         return;
       }
 
-      // Store subdomain and email for later use
-      await stripe.apps.secrets.create({
-        name: 'zendesk_subdomain',
-        payload: userSubdomain,
-        scope: { type: 'account' },
-      });
+      // Store subdomain and email in local state first (will persist to Stripe after OAuth)
+      setSubdomain(trimmedSubdomain);
+      setUserEmail(trimmedEmail);
 
-      await stripe.apps.secrets.create({
-        name: 'zendesk_user_email',
-        payload: email,
-        scope: { type: 'account' },
-      });
+      // Store subdomain temporarily for the OAuth callback
+      // Using try-catch to handle potential secret storage issues gracefully
+      try {
+        await stripe.apps.secrets.create({
+          name: 'zendesk_subdomain',
+          payload: trimmedSubdomain,
+          scope: { type: 'account' },
+        });
 
-      setSubdomain(userSubdomain);
-      setUserEmail(email);
+        await stripe.apps.secrets.create({
+          name: 'zendesk_user_email',
+          payload: trimmedEmail,
+          scope: { type: 'account' },
+        });
+      } catch (secretErr) {
+        console.warn('Could not pre-store secrets, will store after OAuth:', secretErr);
+        // Continue with OAuth - we'll store after successful auth
+      }
 
       // Generate PKCE state and challenge
       const { state, challenge } = await createOAuthState();
@@ -178,7 +196,7 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
         `https://dashboard.stripe.com/apps-oauth/${STRIPE_APP_ID}`
       );
       
-      const authorizationUrl = `https://${userSubdomain}.zendesk.com/oauth/authorizations/new?` +
+      const authorizationUrl = `https://${trimmedSubdomain}.zendesk.com/oauth/authorizations/new?` +
         `response_type=code&` +
         `client_id=${encodeURIComponent(ZENDESK_CLIENT_ID)}&` +
         `redirect_uri=${redirectUri}&` +
