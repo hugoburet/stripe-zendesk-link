@@ -30,8 +30,9 @@ interface UseZendeskOAuthReturn {
   error: string | null;
   subdomain: string | null;
   accessToken: string | null;
+  userEmail: string | null;
   disconnect: () => Promise<void>;
-  initiateLogin: (subdomain: string) => Promise<void>;
+  initiateLogin: (subdomain: string, email: string) => Promise<void>;
   isDemoMode: boolean;
 }
 
@@ -41,6 +42,7 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
   const [error, setError] = useState<string | null>(null);
   const [subdomain, setSubdomain] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const credentialsUsed = useRef(false);
 
   const code = oauthContext?.code;
@@ -65,10 +67,12 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
 
         const storedToken = secrets.data.find(s => s.name === 'zendesk_access_token')?.payload;
         const storedSubdomain = secrets.data.find(s => s.name === 'zendesk_subdomain')?.payload;
+        const storedEmail = secrets.data.find(s => s.name === 'zendesk_user_email')?.payload;
 
         if (storedToken && storedSubdomain) {
           setAccessToken(storedToken);
           setSubdomain(storedSubdomain);
+          setUserEmail(storedEmail || null);
           setIsConnected(true);
           setIsLoading(false);
           return;
@@ -128,8 +132,8 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
     }
   }, [oauthError]);
 
-  // Initiate OAuth login - just needs subdomain
-  const initiateLogin = async (userSubdomain: string) => {
+  // Initiate OAuth login - needs subdomain and email
+  const initiateLogin = async (userSubdomain: string, email: string) => {
     try {
       setIsLoading(true);
       setError(null);
@@ -138,20 +142,28 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
       if (DEMO_MODE) {
         await new Promise(resolve => setTimeout(resolve, 500)); // Brief delay for UX
         setSubdomain(userSubdomain);
+        setUserEmail(email);
         setAccessToken('demo-token');
         setIsConnected(true);
         setIsLoading(false);
         return;
       }
 
-      // Store subdomain for later use in token exchange
+      // Store subdomain and email for later use
       await stripe.apps.secrets.create({
         name: 'zendesk_subdomain',
         payload: userSubdomain,
         scope: { type: 'account' },
       });
 
+      await stripe.apps.secrets.create({
+        name: 'zendesk_user_email',
+        payload: email,
+        scope: { type: 'account' },
+      });
+
       setSubdomain(userSubdomain);
+      setUserEmail(email);
 
       // Generate PKCE state and challenge
       const { state, challenge } = await createOAuthState();
@@ -198,7 +210,7 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
         return;
       }
 
-      const secretNames = ['zendesk_access_token', 'zendesk_subdomain'];
+      const secretNames = ['zendesk_access_token', 'zendesk_subdomain', 'zendesk_user_email'];
       
       for (const name of secretNames) {
         try {
@@ -214,6 +226,7 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
       setIsConnected(false);
       setAccessToken(null);
       setSubdomain(null);
+      setUserEmail(null);
       credentialsUsed.current = false;
     } catch (err) {
       console.error('Failed to disconnect:', err);
@@ -229,6 +242,7 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
     error,
     subdomain,
     accessToken,
+    userEmail,
     disconnect,
     initiateLogin,
     isDemoMode: DEMO_MODE,
