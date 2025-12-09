@@ -12,8 +12,8 @@ const stripe = new Stripe(STRIPE_API_KEY, {
 const ZENDESK_CLIENT_ID = 'your-zendesk-oauth-client-id';
 const STRIPE_APP_ID = 'com.example.zendesk-connector';
 
-// Demo mode flag - set to true to test without real OAuth
-const DEMO_MODE = true;
+// Demo mode flag - set to false for production
+const DEMO_MODE = false;
 
 interface UseZendeskOAuthProps {
   oauthContext?: {
@@ -33,7 +33,6 @@ interface UseZendeskOAuthReturn {
   userEmail: string | null;
   disconnect: () => Promise<void>;
   initiateLogin: (subdomain: string, email: string) => Promise<void>;
-  isDemoMode: boolean;
 }
 
 export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps): UseZendeskOAuthReturn {
@@ -245,6 +244,5 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
     userEmail,
     disconnect,
     initiateLogin,
-    isDemoMode: DEMO_MODE,
   };
 }

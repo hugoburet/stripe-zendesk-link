@@ -33,7 +33,6 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
     subdomain,
     initiateLogin,
     disconnect,
-    isDemoMode,
   } = useZendeskOAuth({
     oauthContext,
     userId: userContext?.id || '',
@@ -177,7 +176,7 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
           {(!stripeCustomerEmail || error) && (
             <Box css={{ stack: 'y', gapY: 'small' }}>
               <Box css={{ font: 'caption', color: 'secondary' }}>
-                {isDemoMode ? 'Demo mode: Enter an email to search' : 'Search by email:'}
+                Search by email:
               </Box>
               <TextField
                 label="Customer email"
