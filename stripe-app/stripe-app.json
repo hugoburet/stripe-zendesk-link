@@ -22,11 +22,7 @@
   },
   "ui_extension": {
     "content_security_policy": {
-      "connect-src": [
-        "https://zsjcivwjghcroaoofnfr.supabase.co/rest/v1/",
-        "https://zsjcivwjghcroaoofnfr.supabase.co/auth/v1/",
-        "https://zsjcivwjghcroaoofnfr.functions.supabase.co/stripe-app-auth"
-      ]
+      "connect-src": null
     },
     "views": [
       {
