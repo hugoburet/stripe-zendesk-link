@@ -10,7 +10,7 @@ const stripe = new Stripe(STRIPE_API_KEY, {
 
 // Configure your OAuth client ID here (created in Zendesk Admin Center)
 const ZENDESK_CLIENT_ID = 'your-zendesk-oauth-client-id';
-const STRIPE_APP_ID = 'tailorapp*AZS8h1B1QQAAAORy#EhcKFWFjY3RfMUVBTmlVRUI0dW1MQ2ZKdg';
+const STRIPE_APP_ID = 'com.example.invoicetemplate';
 
 // Demo mode flag - set to false for production
 const DEMO_MODE = false;
