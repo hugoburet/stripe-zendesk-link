@@ -3,7 +3,6 @@
     "webhooks": null
   },
   "connect_permissions": null,
-  "distribution_type": "public",
   "icon": "./icon.jpeg",
   "id": "com.example.invoicetemplate",
   "name": "Zendesk Connector",
@@ -41,5 +40,5 @@
       }
     ]
   },
-  "version": "0.0.1"
+  "version": "0.0.12"
 }
