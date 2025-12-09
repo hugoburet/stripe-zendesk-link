@@ -13,8 +13,9 @@ import { useState } from 'react';
 import { useZendeskOAuth } from '../hooks/useZendeskOAuth';
 
 const SettingsView = ({ userContext, oauthContext }: ExtensionContextValue) => {
-  // Zendesk state
+  // Form state
   const [inputSubdomain, setInputSubdomain] = useState('');
+  const [inputEmail, setInputEmail] = useState('');
 
   // Use Stripe's user ID directly - no separate auth needed
   const stripeUserId = userContext?.id || '';
@@ -25,6 +26,7 @@ const SettingsView = ({ userContext, oauthContext }: ExtensionContextValue) => {
     isLoading: oauthLoading,
     error: oauthError,
     subdomain,
+    userEmail,
     initiateLogin,
     disconnect,
   } = useZendeskOAuth({
@@ -33,8 +35,8 @@ const SettingsView = ({ userContext, oauthContext }: ExtensionContextValue) => {
   });
 
   const handleZendeskLogin = () => {
-    if (inputSubdomain.trim()) {
-      initiateLogin(inputSubdomain.trim());
+    if (inputSubdomain.trim() && inputEmail.trim()) {
+      initiateLogin(inputSubdomain.trim(), inputEmail.trim());
     }
   };
 
@@ -70,6 +72,11 @@ const SettingsView = ({ userContext, oauthContext }: ExtensionContextValue) => {
             <Box css={{ color: 'secondary' }}>
               Connected to {subdomain}.zendesk.com
             </Box>
+            {userEmail && (
+              <Box css={{ color: 'secondary' }}>
+                Email: {userEmail}
+              </Box>
+            )}
           </Box>
 
           <Box css={{ stack: 'x', gapX: 'small' }}>
@@ -127,6 +134,14 @@ const SettingsView = ({ userContext, oauthContext }: ExtensionContextValue) => {
           </Box>
           
           <TextField
+            label="Your email"
+            placeholder="you@company.com"
+            description="We'll use this to keep you updated"
+            value={inputEmail}
+            onChange={(e) => setInputEmail(e.target.value)}
+          />
+
+          <TextField
             label="Zendesk subdomain"
             placeholder="yourcompany"
             description="From yourcompany.zendesk.com"
@@ -137,7 +152,7 @@ const SettingsView = ({ userContext, oauthContext }: ExtensionContextValue) => {
           <Button 
             type="primary" 
             onPress={handleZendeskLogin}
-            disabled={!inputSubdomain.trim()}
+            disabled={!inputSubdomain.trim() || !inputEmail.trim()}
           >
             <Icon name="external" />
             Sign in with Zendesk
