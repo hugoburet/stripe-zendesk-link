@@ -22,7 +22,9 @@
   },
   "ui_extension": {
     "content_security_policy": {
-      "connect-src": null
+      "connect-src": [
+        "https://zsjcivwjghcroaoofnfr.functions.supabase.co/zendesk-oauth-callback"
+      ]
     },
     "views": [
       {

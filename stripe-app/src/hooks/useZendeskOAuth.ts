@@ -77,23 +77,28 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
           return;
         }
 
-        // Handle OAuth callback - exchange code for token
+        // Handle OAuth callback - exchange code for token via edge function
         if (code && verifier && !credentialsUsed.current && storedSubdomain) {
           credentialsUsed.current = true;
           
-          const tokenResponse = await fetch(`https://${storedSubdomain}.zendesk.com/oauth/tokens`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              grant_type: 'authorization_code',
-              code,
-              client_id: ZENDESK_CLIENT_ID,
-              code_verifier: verifier,
-              redirect_uri: `https://dashboard.stripe.com/apps-oauth/${STRIPE_APP_ID}`,
-            }),
-          });
+          // Call edge function to exchange code for token (avoids CORS issues)
+          const tokenResponse = await fetch(
+            'https://zsjcivwjghcroaoofnfr.functions.supabase.co/zendesk-oauth-callback',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                code,
+                verifier,
+                subdomain: storedSubdomain,
+                stripeUserId: userId,
+                clientId: ZENDESK_CLIENT_ID,
+                redirectUri: `https://dashboard.stripe.com/apps-oauth/${STRIPE_APP_ID}`,
+              }),
+            }
+          );
 
           if (!tokenResponse.ok) {
             const errorData = await tokenResponse.text();
@@ -102,15 +107,16 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
 
           const tokenData = await tokenResponse.json();
           
-          // Store the access token
+          // Store the access token in Stripe's secret store
           await stripe.apps.secrets.create({
             name: 'zendesk_access_token',
-            payload: tokenData.access_token,
+            payload: tokenData.accessToken,
             scope: { type: 'account' },
           });
 
-          setAccessToken(tokenData.access_token);
+          setAccessToken(tokenData.accessToken);
           setSubdomain(storedSubdomain);
+          setUserEmail(tokenData.email || storedEmail || null);
           setIsConnected(true);
         }
       } catch (err) {
