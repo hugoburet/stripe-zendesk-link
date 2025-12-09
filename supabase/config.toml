@@ -1,1 +1,7 @@
 project_id = "zsjcivwjghcroaoofnfr"
+
+[functions.stripe-app-auth]
+verify_jwt = false
+
+[functions.zendesk-oauth-callback]
+verify_jwt = false
