@@ -16,6 +16,8 @@ const SettingsView = ({ userContext, environment, oauthContext }: ExtensionConte
   // Form state
   const [inputSubdomain, setInputSubdomain] = useState('');
   const [inputEmail, setInputEmail] = useState('');
+  const [authUrl, setAuthUrl] = useState<string | null>(null);
+  const [isInitiating, setIsInitiating] = useState(false);
 
   // Use Stripe's user ID directly - no separate auth needed
   const stripeUserId = userContext?.id || '';
@@ -36,9 +38,17 @@ const SettingsView = ({ userContext, environment, oauthContext }: ExtensionConte
     mode,
   });
 
-  const handleZendeskLogin = () => {
+  const handleZendeskLogin = async () => {
     if (inputSubdomain.trim() && inputEmail.trim()) {
-      initiateLogin(inputSubdomain.trim(), inputEmail.trim());
+      setIsInitiating(true);
+      try {
+        const url = await initiateLogin(inputSubdomain.trim(), inputEmail.trim());
+        if (url) {
+          setAuthUrl(url);
+        }
+      } finally {
+        setIsInitiating(false);
+      }
     }
   };
 
@@ -151,14 +161,24 @@ const SettingsView = ({ userContext, environment, oauthContext }: ExtensionConte
             onChange={(e) => setInputSubdomain(e.target.value)}
           />
 
-          <Button 
-            type="primary" 
-            onPress={handleZendeskLogin}
-            disabled={!inputSubdomain.trim() || !inputEmail.trim()}
-          >
-            <Icon name="external" />
-            Sign in with Zendesk
-          </Button>
+          {/* Two-step: first prepare OAuth, then redirect via Button href */}
+          {!authUrl ? (
+            <Button 
+              type="primary" 
+              onPress={handleZendeskLogin}
+              disabled={!inputSubdomain.trim() || !inputEmail.trim() || isInitiating}
+            >
+              {isInitiating ? 'Preparing...' : 'Prepare Zendesk Login'}
+            </Button>
+          ) : (
+            <Button 
+              type="primary" 
+              href={authUrl}
+            >
+              <Icon name="external" />
+              Sign in with Zendesk
+            </Button>
+          )}
         </Box>
       </Box>
     </ContextView>

@@ -34,7 +34,7 @@ interface UseZendeskOAuthReturn {
   accessToken: string | null;
   userEmail: string | null;
   disconnect: () => Promise<void>;
-  initiateLogin: (subdomain: string, email: string) => Promise<void>;
+  initiateLogin: (subdomain: string, email: string) => Promise<string | undefined>;
 }
 
 // Helper to get redirect URL based on mode
@@ -168,8 +168,8 @@ export function useZendeskOAuth({ oauthContext, userId, mode }: UseZendeskOAuthP
     }
   }, [oauthError]);
 
-  // Initiate OAuth login
-  const initiateLogin = async (userSubdomain: string, email: string) => {
+  // Initiate OAuth login - returns authorization URL for Stripe SDK to handle redirect
+  const initiateLogin = async (userSubdomain: string, email: string): Promise<string | undefined> => {
     try {
       setIsLoading(true);
       setError(null);
@@ -192,46 +192,35 @@ export function useZendeskOAuth({ oauthContext, userId, mode }: UseZendeskOAuthP
         setAccessToken('demo-token');
         setIsConnected(true);
         setIsLoading(false);
-        return;
+        return undefined;
       }
 
       console.log('[OAuth] Storing subdomain and email...');
 
-      // Use find_or_create with expires_at to force update if exists
-      // Per Stripe docs: https://docs.stripe.com/stripe-apps/store-secrets
-      await stripe.apps.secrets.find({
-        name: 'zendesk_subdomain',
-        scope: { type: 'account' },
-      }).then(() => 
-        stripe.apps.secrets.deleteWhere({
-          name: 'zendesk_subdomain',
-          scope: { type: 'account' },
-        })
-      ).catch(() => {/* doesn't exist */});
-      
-      await stripe.apps.secrets.create({
-        name: 'zendesk_subdomain',
-        payload: trimmedSubdomain,
-        scope: { type: 'account' },
-      });
-      console.log('[OAuth] Subdomain secret stored');
+      // Delete existing secrets first, then create new ones
+      // This handles the "upsert" pattern for Stripe secrets
+      const secretsToStore = [
+        { name: 'zendesk_subdomain', payload: trimmedSubdomain },
+        { name: 'zendesk_user_email', payload: trimmedEmail },
+      ];
 
-      await stripe.apps.secrets.find({
-        name: 'zendesk_user_email',
-        scope: { type: 'account' },
-      }).then(() => 
-        stripe.apps.secrets.deleteWhere({
-          name: 'zendesk_user_email',
+      for (const secret of secretsToStore) {
+        try {
+          await stripe.apps.secrets.deleteWhere({
+            name: secret.name,
+            scope: { type: 'account' },
+          });
+        } catch {
+          // Secret doesn't exist, that's fine
+        }
+        
+        await stripe.apps.secrets.create({
+          name: secret.name,
+          payload: secret.payload,
           scope: { type: 'account' },
-        })
-      ).catch(() => {/* doesn't exist */});
-
-      await stripe.apps.secrets.create({
-        name: 'zendesk_user_email',
-        payload: trimmedEmail,
-        scope: { type: 'account' },
-      });
-      console.log('[OAuth] Email secret stored');
+        });
+        console.log(`[OAuth] ${secret.name} secret stored`);
+      }
 
       console.log('[OAuth] Secrets stored, generating PKCE state...');
 
@@ -249,19 +238,20 @@ export function useZendeskOAuth({ oauthContext, userId, mode }: UseZendeskOAuthP
       authorizationUrl.searchParams.set('code_challenge', challenge);
       authorizationUrl.searchParams.set('code_challenge_method', 'S256');
 
-      console.log('[OAuth] Redirecting to Zendesk...');
+      console.log('[OAuth] Returning authorization URL for Stripe SDK redirect');
 
       // Update local state
       setSubdomain(trimmedSubdomain);
       setUserEmail(trimmedEmail);
 
-      // Redirect to Zendesk OAuth page
-      window.open(authorizationUrl.toString(), '_top');
+      // Return the URL - let Stripe SDK handle the redirect (NOT window.open)
+      return authorizationUrl.toString();
 
     } catch (err) {
       console.error('[OAuth] Login initiation error:', err);
       setError(err instanceof Error ? err.message : 'Failed to start login');
       setIsLoading(false);
+      return undefined;
     }
   };
 
