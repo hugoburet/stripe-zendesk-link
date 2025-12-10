@@ -11,6 +11,7 @@ const stripe = new Stripe(STRIPE_API_KEY, {
 // Configure your OAuth client ID here (created in Zendesk Admin Center)
 const ZENDESK_CLIENT_ID = 'your-zendesk-oauth-client-id';
 const STRIPE_APP_ID = 'com.example.invoicetemplate';
+const EDGE_FUNCTION_URL = 'https://zsjcivwjghcroaoofnfr.functions.supabase.co/zendesk-oauth-callback';
 
 // Demo mode flag - set to false for production
 const DEMO_MODE = false;
@@ -22,6 +23,7 @@ interface UseZendeskOAuthProps {
     error?: string;
   };
   userId: string;
+  mode: 'live' | 'test';
 }
 
 interface UseZendeskOAuthReturn {
@@ -35,30 +37,32 @@ interface UseZendeskOAuthReturn {
   initiateLogin: (subdomain: string, email: string) => Promise<void>;
 }
 
-export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps): UseZendeskOAuthReturn {
+// Helper to get redirect URL based on mode
+const getRedirectURL = (mode: 'live' | 'test') => 
+  `https://dashboard.stripe.com/${mode === 'test' ? 'test/' : ''}apps-oauth/${STRIPE_APP_ID}`;
+
+export function useZendeskOAuth({ oauthContext, userId, mode }: UseZendeskOAuthProps): UseZendeskOAuthReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [subdomain, setSubdomain] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const credentialsUsed = useRef(false);
+  const tokenExchangeAttempted = useRef(false);
 
   const code = oauthContext?.code;
   const verifier = oauthContext?.verifier;
   const oauthError = oauthContext?.error;
 
-// Check for existing connection and handle OAuth callback
+  // Check for existing connection on mount
   useEffect(() => {
-    async function checkConnectionAndHandleCallback() {
-      // Demo mode: skip connection check, just show login form immediately
+    async function checkExistingConnection() {
       if (DEMO_MODE) {
         setIsLoading(false);
         return;
       }
 
       try {
-        // First check if we already have tokens stored
         const secrets = await stripe.apps.secrets.list({
           scope: { type: 'account' },
           limit: 10,
@@ -73,80 +77,106 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
           setSubdomain(storedSubdomain);
           setUserEmail(storedEmail || null);
           setIsConnected(true);
-          setIsLoading(false);
-          return;
-        }
-
-        // Handle OAuth callback - exchange code for token via edge function
-        if (code && verifier && !credentialsUsed.current && storedSubdomain) {
-          credentialsUsed.current = true;
-          
-          // Call edge function to exchange code for token (avoids CORS issues)
-          const tokenResponse = await fetch(
-            'https://zsjcivwjghcroaoofnfr.functions.supabase.co/zendesk-oauth-callback',
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                code,
-                verifier,
-                subdomain: storedSubdomain,
-                stripeUserId: userId,
-                clientId: ZENDESK_CLIENT_ID,
-                redirectUri: `https://dashboard.stripe.com/apps-oauth/${STRIPE_APP_ID}`,
-              }),
-            }
-          );
-
-          if (!tokenResponse.ok) {
-            const errorData = await tokenResponse.text();
-            throw new Error(`Token exchange failed: ${errorData}`);
-          }
-
-          const tokenData = await tokenResponse.json();
-          
-          // Store the access token in Stripe's secret store
-          await stripe.apps.secrets.create({
-            name: 'zendesk_access_token',
-            payload: tokenData.accessToken,
-            scope: { type: 'account' },
-          });
-
-          setAccessToken(tokenData.accessToken);
-          setSubdomain(storedSubdomain);
-          setUserEmail(tokenData.email || storedEmail || null);
-          setIsConnected(true);
         }
       } catch (err) {
-        console.error('OAuth error:', err);
-        setError(err instanceof Error ? err.message : 'OAuth failed');
+        console.error('Error checking connection:', err);
       } finally {
         setIsLoading(false);
       }
     }
 
-    checkConnectionAndHandleCallback();
-  }, [code, verifier]);
+    checkExistingConnection();
+  }, []);
 
-  // Handle OAuth errors from callback
+  // Handle OAuth callback - exchange code for token
+  useEffect(() => {
+    async function handleOAuthCallback() {
+      // Skip if no code/verifier or already attempted
+      if (!code || !verifier || tokenExchangeAttempted.current || DEMO_MODE) {
+        return;
+      }
+
+      tokenExchangeAttempted.current = true;
+      setIsLoading(true);
+
+      try {
+        // Get stored subdomain from secrets
+        const secrets = await stripe.apps.secrets.list({
+          scope: { type: 'account' },
+          limit: 10,
+        });
+
+        const storedSubdomain = secrets.data.find(s => s.name === 'zendesk_subdomain')?.payload;
+        const storedEmail = secrets.data.find(s => s.name === 'zendesk_user_email')?.payload;
+
+        if (!storedSubdomain) {
+          throw new Error('Missing subdomain - please try connecting again');
+        }
+
+        console.log('[OAuth] Exchanging code for token...');
+
+        // Exchange code for token via edge function
+        const tokenResponse = await fetch(EDGE_FUNCTION_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code,
+            verifier,
+            subdomain: storedSubdomain,
+            stripeUserId: userId,
+            clientId: ZENDESK_CLIENT_ID,
+            redirectUri: getRedirectURL(mode),
+          }),
+        });
+
+        if (!tokenResponse.ok) {
+          const errorText = await tokenResponse.text();
+          throw new Error(`Token exchange failed: ${errorText}`);
+        }
+
+        const tokenData = await tokenResponse.json();
+        console.log('[OAuth] Token exchange successful');
+
+        // Store access token in Stripe secrets
+        await stripe.apps.secrets.create({
+          name: 'zendesk_access_token',
+          payload: tokenData.accessToken,
+          scope: { type: 'account' },
+        });
+
+        setAccessToken(tokenData.accessToken);
+        setSubdomain(storedSubdomain);
+        setUserEmail(tokenData.email || storedEmail || null);
+        setIsConnected(true);
+      } catch (err) {
+        console.error('[OAuth] Callback error:', err);
+        setError(err instanceof Error ? err.message : 'OAuth callback failed');
+        tokenExchangeAttempted.current = false;
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    handleOAuthCallback();
+  }, [code, verifier, userId, mode]);
+
+  // Handle OAuth errors
   useEffect(() => {
     if (oauthError) {
       setError(`OAuth error: ${oauthError}`);
+      setIsLoading(false);
     }
   }, [oauthError]);
 
-  // Initiate OAuth login - needs subdomain and email
+  // Initiate OAuth login
   const initiateLogin = async (userSubdomain: string, email: string) => {
     try {
       setIsLoading(true);
       setError(null);
 
-      // Validate inputs
       const trimmedSubdomain = userSubdomain?.trim();
       const trimmedEmail = email?.trim();
-      
+
       if (!trimmedSubdomain) {
         throw new Error('Zendesk subdomain is required');
       }
@@ -154,7 +184,7 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
         throw new Error('Email is required');
       }
 
-      // Demo mode: simulate successful connection (in-memory only)
+      // Demo mode
       if (DEMO_MODE) {
         await new Promise(resolve => setTimeout(resolve, 500));
         setSubdomain(trimmedSubdomain);
@@ -165,84 +195,89 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
         return;
       }
 
-      // Store subdomain and email in local state first (will persist to Stripe after OAuth)
-      setSubdomain(trimmedSubdomain);
-      setUserEmail(trimmedEmail);
+      console.log('[OAuth] Storing subdomain and email...');
 
-      // Store subdomain temporarily for the OAuth callback
-      // Using try-catch to handle potential secret storage issues gracefully
-      try {
-        await stripe.apps.secrets.create({
-          name: 'zendesk_subdomain',
-          payload: trimmedSubdomain,
-          scope: { type: 'account' },
-        });
-
-        await stripe.apps.secrets.create({
-          name: 'zendesk_user_email',
-          payload: trimmedEmail,
-          scope: { type: 'account' },
-        });
-      } catch (secretErr) {
-        console.warn('Could not pre-store secrets, will store after OAuth:', secretErr);
-        // Continue with OAuth - we'll store after successful auth
-      }
-
-      // Generate PKCE state and challenge
-      const { state, challenge } = await createOAuthState();
-
-      // Build authorization URL and redirect
-      const redirectUri = encodeURIComponent(
-        `https://dashboard.stripe.com/apps-oauth/${STRIPE_APP_ID}`
-      );
-      
-      const authorizationUrl = `https://${trimmedSubdomain}.zendesk.com/oauth/authorizations/new?` +
-        `response_type=code&` +
-        `client_id=${encodeURIComponent(ZENDESK_CLIENT_ID)}&` +
-        `redirect_uri=${redirectUri}&` +
-        `scope=${encodeURIComponent('read write')}&` +
-        `state=${state}&` +
-        `code_challenge=${challenge}&` +
-        `code_challenge_method=S256`;
-
-      // Reset loading after a short delay if redirect doesn't happen
-      setTimeout(() => {
-        setIsLoading(false);
-      }, 2000);
-
-      // Redirect to Zendesk OAuth
-      window.open(authorizationUrl, '_top');
-    } catch (err) {
-      console.error('Failed to initiate OAuth:', err);
-      setError(err instanceof Error ? err.message : 'Failed to start login');
-      setIsLoading(false);
-    }
-  };
-
-  // Disconnect - remove stored tokens
-  const disconnect = async () => {
-    try {
-      setIsLoading(true);
-      
-      // Demo mode: just reset state (in-memory only)
-      if (DEMO_MODE) {
-        setIsConnected(false);
-        setAccessToken(null);
-        setSubdomain(null);
-        setIsLoading(false);
-        return;
-      }
-
-      const secretNames = ['zendesk_access_token', 'zendesk_subdomain', 'zendesk_user_email'];
-      
+      // First, delete any existing secrets to avoid conflicts
+      const secretNames = ['zendesk_subdomain', 'zendesk_user_email', 'zendesk_access_token'];
       for (const name of secretNames) {
         try {
           await stripe.apps.secrets.deleteWhere({
             name,
             scope: { type: 'account' },
           });
-        } catch (err) {
-          // Ignore errors for secrets that don't exist
+        } catch {
+          // Ignore - secret may not exist
+        }
+      }
+
+      // Store subdomain and email BEFORE redirect (required for callback)
+      await stripe.apps.secrets.create({
+        name: 'zendesk_subdomain',
+        payload: trimmedSubdomain,
+        scope: { type: 'account' },
+      });
+
+      await stripe.apps.secrets.create({
+        name: 'zendesk_user_email',
+        payload: trimmedEmail,
+        scope: { type: 'account' },
+      });
+
+      console.log('[OAuth] Secrets stored, generating PKCE state...');
+
+      // Generate PKCE state and challenge using Stripe's SDK
+      const { state, challenge } = await createOAuthState();
+
+      // Build Zendesk authorization URL
+      const redirectUri = getRedirectURL(mode);
+      const authorizationUrl = new URL(`https://${trimmedSubdomain}.zendesk.com/oauth/authorizations/new`);
+      authorizationUrl.searchParams.set('response_type', 'code');
+      authorizationUrl.searchParams.set('client_id', ZENDESK_CLIENT_ID);
+      authorizationUrl.searchParams.set('redirect_uri', redirectUri);
+      authorizationUrl.searchParams.set('scope', 'read write');
+      authorizationUrl.searchParams.set('state', state);
+      authorizationUrl.searchParams.set('code_challenge', challenge);
+      authorizationUrl.searchParams.set('code_challenge_method', 'S256');
+
+      console.log('[OAuth] Redirecting to Zendesk...');
+
+      // Update local state
+      setSubdomain(trimmedSubdomain);
+      setUserEmail(trimmedEmail);
+
+      // Redirect to Zendesk OAuth page
+      window.open(authorizationUrl.toString(), '_top');
+
+    } catch (err) {
+      console.error('[OAuth] Login initiation error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to start login');
+      setIsLoading(false);
+    }
+  };
+
+  // Disconnect
+  const disconnect = async () => {
+    try {
+      setIsLoading(true);
+
+      if (DEMO_MODE) {
+        setIsConnected(false);
+        setAccessToken(null);
+        setSubdomain(null);
+        setUserEmail(null);
+        setIsLoading(false);
+        return;
+      }
+
+      const secretNames = ['zendesk_access_token', 'zendesk_subdomain', 'zendesk_user_email'];
+      for (const name of secretNames) {
+        try {
+          await stripe.apps.secrets.deleteWhere({
+            name,
+            scope: { type: 'account' },
+          });
+        } catch {
+          // Ignore
         }
       }
 
@@ -250,9 +285,9 @@ export function useZendeskOAuth({ oauthContext, userId }: UseZendeskOAuthProps):
       setAccessToken(null);
       setSubdomain(null);
       setUserEmail(null);
-      credentialsUsed.current = false;
+      tokenExchangeAttempted.current = false;
     } catch (err) {
-      console.error('Failed to disconnect:', err);
+      console.error('Disconnect error:', err);
       setError(err instanceof Error ? err.message : 'Failed to disconnect');
     } finally {
       setIsLoading(false);

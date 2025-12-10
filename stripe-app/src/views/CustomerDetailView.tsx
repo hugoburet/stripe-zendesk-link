@@ -22,8 +22,12 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inputSubdomain, setInputSubdomain] = useState('');
+  const [inputEmail, setInputEmail] = useState('');
   const [manualEmail, setManualEmail] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
+
+  // Get mode for OAuth redirect URL
+  const mode = environment?.mode || 'test';
 
   // Use OAuth hook
   const {
@@ -36,6 +40,7 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
   } = useZendeskOAuth({
     oauthContext,
     userId: userContext?.id || '',
+    mode,
   });
 
   // Get customer email from Stripe's objectContext - try multiple possible locations
@@ -86,8 +91,8 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
   };
 
   const handleLogin = () => {
-    if (inputSubdomain.trim()) {
-      initiateLogin(inputSubdomain.trim());
+    if (inputSubdomain.trim() && inputEmail.trim()) {
+      initiateLogin(inputSubdomain.trim(), inputEmail.trim());
     }
   };
 
@@ -126,6 +131,16 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
           
           <Box css={{ width: 'fill' }}>
             <TextField
+              label="Your email"
+              placeholder="you@company.com"
+              description="We'll use this to keep you updated"
+              value={inputEmail}
+              onChange={(e) => setInputEmail(e.target.value)}
+            />
+          </Box>
+
+          <Box css={{ width: 'fill' }}>
+            <TextField
               label="Zendesk subdomain"
               placeholder="yourcompany"
               description="From yourcompany.zendesk.com"
@@ -137,7 +152,7 @@ const CustomerDetailView = ({ userContext, environment, oauthContext }: Extensio
           <Button 
             type="primary" 
             onPress={handleLogin}
-            disabled={!inputSubdomain.trim()}
+            disabled={!inputSubdomain.trim() || !inputEmail.trim()}
           >
             <Icon name="external" />
             Sign in with Zendesk

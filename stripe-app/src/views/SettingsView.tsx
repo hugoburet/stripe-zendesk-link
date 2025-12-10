@@ -12,13 +12,14 @@ import type { ExtensionContextValue } from '@stripe/ui-extension-sdk/context';
 import { useState } from 'react';
 import { useZendeskOAuth } from '../hooks/useZendeskOAuth';
 
-const SettingsView = ({ userContext, oauthContext }: ExtensionContextValue) => {
+const SettingsView = ({ userContext, environment, oauthContext }: ExtensionContextValue) => {
   // Form state
   const [inputSubdomain, setInputSubdomain] = useState('');
   const [inputEmail, setInputEmail] = useState('');
 
   // Use Stripe's user ID directly - no separate auth needed
   const stripeUserId = userContext?.id || '';
+  const mode = environment?.mode || 'test';
 
   // Use OAuth hook
   const {
@@ -32,6 +33,7 @@ const SettingsView = ({ userContext, oauthContext }: ExtensionContextValue) => {
   } = useZendeskOAuth({
     oauthContext,
     userId: stripeUserId,
+    mode,
   });
 
   const handleZendeskLogin = () => {
