@@ -7,18 +7,18 @@ import {
   Banner,
   Spinner,
   Divider,
-  Link,
 } from '@stripe/ui-extension-sdk/ui';
 import type { ExtensionContextValue } from '@stripe/ui-extension-sdk/context';
 import { useState } from 'react';
 import { useZendeskOAuth } from '../hooks/useZendeskOAuth';
 
+// External auth page URL - this is hosted on Lovable
+const EXTERNAL_AUTH_URL = 'https://preview--zsjcivwjghcroaoofnfr.lovable.app/zendesk-auth';
+
 const SettingsView = ({ userContext, environment, oauthContext }: ExtensionContextValue) => {
   // Form state
   const [inputSubdomain, setInputSubdomain] = useState('');
   const [inputEmail, setInputEmail] = useState('');
-  const [authUrl, setAuthUrl] = useState<string | null>(null);
-  const [isInitiating, setIsInitiating] = useState(false);
 
   // Use Stripe's user ID directly - no separate auth needed
   const stripeUserId = userContext?.id || '';
@@ -31,33 +31,22 @@ const SettingsView = ({ userContext, environment, oauthContext }: ExtensionConte
     error: oauthError,
     subdomain,
     userEmail,
-    initiateLogin,
     disconnect,
+    checkConnection,
   } = useZendeskOAuth({
     oauthContext,
     userId: stripeUserId,
     mode,
   });
 
-  const handleZendeskLogin = async () => {
-    // Prevent duplicate calls
-    if (authUrl || isInitiating) {
-      console.log('[Settings] Skipping - already have authUrl or initiating');
-      return;
-    }
-    
-    if (inputSubdomain.trim() && inputEmail.trim()) {
-      setIsInitiating(true);
-      try {
-        const url = await initiateLogin(inputSubdomain.trim(), inputEmail.trim());
-        if (url) {
-          console.log('[Settings] Auth URL received:', url.substring(0, 50) + '...');
-          setAuthUrl(url);
-        }
-      } finally {
-        setIsInitiating(false);
-      }
-    }
+  // Build the external auth URL with parameters
+  const getAuthUrl = () => {
+    const params = new URLSearchParams({
+      stripe_user: stripeUserId,
+      subdomain: inputSubdomain.trim(),
+      email: inputEmail.trim(),
+    });
+    return `${EXTERNAL_AUTH_URL}?${params.toString()}`;
   };
 
   // Loading Zendesk connection status
@@ -169,30 +158,22 @@ const SettingsView = ({ userContext, environment, oauthContext }: ExtensionConte
             onChange={(e) => setInputSubdomain(e.target.value)}
           />
 
-          {/* Two-step: first prepare OAuth, then redirect via Button href */}
-          {!authUrl ? (
-            <Button 
-              type="primary" 
-              onPress={handleZendeskLogin}
-              disabled={!inputSubdomain.trim() || !inputEmail.trim() || isInitiating}
-            >
-              {isInitiating ? 'Preparing...' : 'Prepare Zendesk Login'}
-            </Button>
-          ) : (
-            <Box css={{ stack: 'y', gapY: 'small' }}>
-              <Banner 
-                type="default" 
-                title="Ready to connect" 
-                description="Click below to sign in with Zendesk"
-              />
-              <Link href={authUrl} external>
-                <Button type="primary">
-                  <Icon name="external" />
-                  Sign in with Zendesk
-                </Button>
-              </Link>
-            </Box>
-          )}
+          {/* Direct link to external auth page */}
+          <Button 
+            type="primary" 
+            href={getAuthUrl()}
+            disabled={!inputSubdomain.trim() || !inputEmail.trim()}
+          >
+            <Icon name="external" />
+            Connect to Zendesk
+          </Button>
+          
+          <Button
+            type="secondary"
+            onPress={checkConnection}
+          >
+            Check Connection Status
+          </Button>
         </Box>
       </Box>
     </ContextView>
