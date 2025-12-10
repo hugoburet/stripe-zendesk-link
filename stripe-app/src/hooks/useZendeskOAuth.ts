@@ -9,7 +9,8 @@ const stripe = new Stripe(STRIPE_API_KEY, {
 });
 
 // OAuth client ID (created in Zendesk Admin Center)
-const ZENDESK_CLIENT_ID = 'zdg-zendeskgpt';
+// Replace with your actual Zendesk OAuth client identifier
+const ZENDESK_CLIENT_ID = 'stripe_zendesk_connector';
 const STRIPE_APP_ID = 'com.example.invoicetemplate';
 const EDGE_FUNCTION_URL = 'https://zsjcivwjghcroaoofnfr.functions.supabase.co/zendesk-oauth-callback';
 
