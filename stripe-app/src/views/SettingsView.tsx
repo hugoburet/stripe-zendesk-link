@@ -39,11 +39,18 @@ const SettingsView = ({ userContext, environment, oauthContext }: ExtensionConte
   });
 
   const handleZendeskLogin = async () => {
+    // Prevent duplicate calls
+    if (authUrl || isInitiating) {
+      console.log('[Settings] Skipping - already have authUrl or initiating');
+      return;
+    }
+    
     if (inputSubdomain.trim() && inputEmail.trim()) {
       setIsInitiating(true);
       try {
         const url = await initiateLogin(inputSubdomain.trim(), inputEmail.trim());
         if (url) {
+          console.log('[Settings] Auth URL received:', url.substring(0, 50) + '...');
           setAuthUrl(url);
         }
       } finally {
@@ -171,14 +178,21 @@ const SettingsView = ({ userContext, environment, oauthContext }: ExtensionConte
               {isInitiating ? 'Preparing...' : 'Prepare Zendesk Login'}
             </Button>
           ) : (
-            <Button 
-              type="primary" 
-              href={authUrl}
-              target="_blank"
-            >
-              <Icon name="external" />
-              Sign in with Zendesk
-            </Button>
+            <Box css={{ stack: 'y', gapY: 'small' }}>
+              <Banner 
+                type="default" 
+                title="Ready to connect" 
+                description="Click below to sign in with Zendesk"
+              />
+              <Button 
+                type="primary" 
+                href={authUrl}
+                target="_blank"
+              >
+                <Icon name="external" />
+                Sign in with Zendesk
+              </Button>
+            </Box>
           )}
         </Box>
       </Box>
