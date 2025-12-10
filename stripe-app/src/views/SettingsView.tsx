@@ -7,6 +7,7 @@ import {
   Banner,
   Spinner,
   Divider,
+  Link,
 } from '@stripe/ui-extension-sdk/ui';
 import type { ExtensionContextValue } from '@stripe/ui-extension-sdk/context';
 import { useState } from 'react';
@@ -184,13 +185,12 @@ const SettingsView = ({ userContext, environment, oauthContext }: ExtensionConte
                 title="Ready to connect" 
                 description="Click below to sign in with Zendesk"
               />
-              <Button 
-                type="primary" 
-                href={authUrl}
-              >
-                <Icon name="external" />
-                Sign in with Zendesk
-              </Button>
+              <Link href={authUrl} external>
+                <Button type="primary">
+                  <Icon name="external" />
+                  Sign in with Zendesk
+                </Button>
+              </Link>
             </Box>
           )}
         </Box>

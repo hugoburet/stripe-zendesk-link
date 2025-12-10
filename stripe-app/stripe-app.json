@@ -26,6 +26,9 @@
         "https://zsjcivwjghcroaoofnfr.functions.supabase.co/zendesk-oauth-callback"
       ]
     },
+    "external_link_hosts": [
+      "*.zendesk.com"
+    ],
     "views": [
       {
         "component": "CustomerDetailView",
