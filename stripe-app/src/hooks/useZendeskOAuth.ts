@@ -268,6 +268,7 @@ export function useZendeskOAuth({ oauthContext, userId, mode }: UseZendeskOAuthP
       // Update local state
       setSubdomain(trimmedSubdomain);
       setUserEmail(trimmedEmail);
+      setIsLoading(false); // Stop loading - auth URL is ready
 
       // Return the URL - let Stripe SDK handle the redirect (NOT window.open)
       return authorizationUrl.toString();
