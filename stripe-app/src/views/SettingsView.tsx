@@ -174,6 +174,7 @@ const SettingsView = ({ userContext, environment, oauthContext }: ExtensionConte
             <Button 
               type="primary" 
               href={authUrl}
+              target="_blank"
             >
               <Icon name="external" />
               Sign in with Zendesk
