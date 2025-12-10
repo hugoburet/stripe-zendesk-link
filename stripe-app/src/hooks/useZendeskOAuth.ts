@@ -197,40 +197,21 @@ export function useZendeskOAuth({ oauthContext, userId, mode }: UseZendeskOAuthP
 
       console.log('[OAuth] Storing subdomain and email...');
 
-      // Use Stripe's find_or_create pattern for secrets
-      // This is the correct API - it requires 'name', 'payload', and 'scope'
-      try {
-        await stripe.apps.secrets.deleteWhere({
-          name: 'zendesk_subdomain',
-          scope: { type: 'account' },
-        });
-      } catch {
-        // Secret may not exist, continue
-      }
-      
-      try {
-        await stripe.apps.secrets.deleteWhere({
-          name: 'zendesk_user_email', 
-          scope: { type: 'account' },
-        });
-      } catch {
-        // Secret may not exist, continue
-      }
-
-      // Create secrets with required payload parameter
-      const subdomainSecret = await stripe.apps.secrets.create({
+      // Use Stripe's set method (upsert pattern) - this is the correct API per Stripe docs
+      // https://docs.stripe.com/stripe-apps/pkce-oauth-flow
+      await stripe.apps.secrets.set({
         name: 'zendesk_subdomain',
-        payload: String(trimmedSubdomain), // Ensure string
+        payload: trimmedSubdomain,
         scope: { type: 'account' },
       });
-      console.log('[OAuth] Subdomain secret created:', subdomainSecret.name);
+      console.log('[OAuth] Subdomain secret stored');
 
-      const emailSecret = await stripe.apps.secrets.create({
+      await stripe.apps.secrets.set({
         name: 'zendesk_user_email',
-        payload: String(trimmedEmail), // Ensure string
+        payload: trimmedEmail,
         scope: { type: 'account' },
       });
-      console.log('[OAuth] Email secret created:', emailSecret.name);
+      console.log('[OAuth] Email secret stored');
 
       console.log('[OAuth] Secrets stored, generating PKCE state...');
 
