@@ -197,16 +197,36 @@ export function useZendeskOAuth({ oauthContext, userId, mode }: UseZendeskOAuthP
 
       console.log('[OAuth] Storing subdomain and email...');
 
-      // Use Stripe's set method (upsert pattern) - this is the correct API per Stripe docs
-      // https://docs.stripe.com/stripe-apps/pkce-oauth-flow
-      await stripe.apps.secrets.set({
+      // Use find_or_create with expires_at to force update if exists
+      // Per Stripe docs: https://docs.stripe.com/stripe-apps/store-secrets
+      await stripe.apps.secrets.find({
+        name: 'zendesk_subdomain',
+        scope: { type: 'account' },
+      }).then(() => 
+        stripe.apps.secrets.deleteWhere({
+          name: 'zendesk_subdomain',
+          scope: { type: 'account' },
+        })
+      ).catch(() => {/* doesn't exist */});
+      
+      await stripe.apps.secrets.create({
         name: 'zendesk_subdomain',
         payload: trimmedSubdomain,
         scope: { type: 'account' },
       });
       console.log('[OAuth] Subdomain secret stored');
 
-      await stripe.apps.secrets.set({
+      await stripe.apps.secrets.find({
+        name: 'zendesk_user_email',
+        scope: { type: 'account' },
+      }).then(() => 
+        stripe.apps.secrets.deleteWhere({
+          name: 'zendesk_user_email',
+          scope: { type: 'account' },
+        })
+      ).catch(() => {/* doesn't exist */});
+
+      await stripe.apps.secrets.create({
         name: 'zendesk_user_email',
         payload: trimmedEmail,
         scope: { type: 'account' },
