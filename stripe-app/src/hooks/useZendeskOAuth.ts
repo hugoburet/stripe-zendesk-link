@@ -197,29 +197,54 @@ export function useZendeskOAuth({ oauthContext, userId, mode }: UseZendeskOAuthP
 
       console.log('[OAuth] Storing subdomain and email...');
 
-      // Delete existing secrets first, then create new ones
-      // This handles the "upsert" pattern for Stripe secrets
-      const secretsToStore = [
-        { name: 'zendesk_subdomain', payload: trimmedSubdomain },
-        { name: 'zendesk_user_email', payload: trimmedEmail },
-      ];
-
-      for (const secret of secretsToStore) {
-        try {
-          await stripe.apps.secrets.deleteWhere({
-            name: secret.name,
-            scope: { type: 'account' },
-          });
-        } catch {
-          // Secret doesn't exist, that's fine
-        }
-        
+      // Store subdomain (will overwrite if exists using create-catch-delete-create pattern)
+      try {
         await stripe.apps.secrets.create({
-          name: secret.name,
-          payload: secret.payload,
+          name: 'zendesk_subdomain',
+          payload: trimmedSubdomain,
           scope: { type: 'account' },
         });
-        console.log(`[OAuth] ${secret.name} secret stored`);
+        console.log('[OAuth] Subdomain secret stored');
+      } catch (e: any) {
+        if (e.code === 'resource_already_exists') {
+          await stripe.apps.secrets.deleteWhere({
+            name: 'zendesk_subdomain',
+            scope: { type: 'account' },
+          });
+          await stripe.apps.secrets.create({
+            name: 'zendesk_subdomain',
+            payload: trimmedSubdomain,
+            scope: { type: 'account' },
+          });
+          console.log('[OAuth] Subdomain secret updated');
+        } else {
+          throw e;
+        }
+      }
+
+      // Store email (same pattern)
+      try {
+        await stripe.apps.secrets.create({
+          name: 'zendesk_user_email',
+          payload: trimmedEmail,
+          scope: { type: 'account' },
+        });
+        console.log('[OAuth] Email secret stored');
+      } catch (e: any) {
+        if (e.code === 'resource_already_exists') {
+          await stripe.apps.secrets.deleteWhere({
+            name: 'zendesk_user_email',
+            scope: { type: 'account' },
+          });
+          await stripe.apps.secrets.create({
+            name: 'zendesk_user_email',
+            payload: trimmedEmail,
+            scope: { type: 'account' },
+          });
+          console.log('[OAuth] Email secret updated');
+        } else {
+          throw e;
+        }
       }
 
       console.log('[OAuth] Secrets stored, generating PKCE state...');
