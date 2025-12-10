@@ -197,31 +197,40 @@ export function useZendeskOAuth({ oauthContext, userId, mode }: UseZendeskOAuthP
 
       console.log('[OAuth] Storing subdomain and email...');
 
-      // First, delete any existing secrets to avoid conflicts
-      const secretNames = ['zendesk_subdomain', 'zendesk_user_email', 'zendesk_access_token'];
-      for (const name of secretNames) {
-        try {
-          await stripe.apps.secrets.deleteWhere({
-            name,
-            scope: { type: 'account' },
-          });
-        } catch {
-          // Ignore - secret may not exist
-        }
+      // Use Stripe's find_or_create pattern for secrets
+      // This is the correct API - it requires 'name', 'payload', and 'scope'
+      try {
+        await stripe.apps.secrets.deleteWhere({
+          name: 'zendesk_subdomain',
+          scope: { type: 'account' },
+        });
+      } catch {
+        // Secret may not exist, continue
+      }
+      
+      try {
+        await stripe.apps.secrets.deleteWhere({
+          name: 'zendesk_user_email', 
+          scope: { type: 'account' },
+        });
+      } catch {
+        // Secret may not exist, continue
       }
 
-      // Store subdomain and email BEFORE redirect (required for callback)
-      await stripe.apps.secrets.create({
+      // Create secrets with required payload parameter
+      const subdomainSecret = await stripe.apps.secrets.create({
         name: 'zendesk_subdomain',
-        payload: trimmedSubdomain,
+        payload: String(trimmedSubdomain), // Ensure string
         scope: { type: 'account' },
       });
+      console.log('[OAuth] Subdomain secret created:', subdomainSecret.name);
 
-      await stripe.apps.secrets.create({
+      const emailSecret = await stripe.apps.secrets.create({
         name: 'zendesk_user_email',
-        payload: trimmedEmail,
+        payload: String(trimmedEmail), // Ensure string
         scope: { type: 'account' },
       });
+      console.log('[OAuth] Email secret created:', emailSecret.name);
 
       console.log('[OAuth] Secrets stored, generating PKCE state...');
 
