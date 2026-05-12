@@ -1,41 +1,41 @@
 {
-  "app_backend": {
-    "webhooks": null
-  },
-  "connect_permissions": null,
-  "distribution_type": "public",
-  "icon": "./icon.jpeg",
+  "$schema": "https://stripe.com/stripe-app.schema.json",
   "id": "com.example.invoicetemplate",
   "name": "Zendesk Connector",
+  "version": "0.0.194",
+  "icon": "./icon.png",
+  "ui_extension": {
+    "views": [
+      {
+        "viewport": "stripe.dashboard.drawer.default",
+        "component": "App"
+      },
+      {
+        "viewport": "stripe.dashboard.customer.detail",
+        "component": "CustomerDetailApp"
+      }
+    ],
+    "content_security_policy": {
+      "connect-src": [
+        "https://gbtzgszldsarfwzcqoiz.supabase.co/functions/v1/",
+        "https://gbtzgszldsarfwzcqoiz.supabase.co/storage/v1/"
+      ],
+      "image-src": [
+        "https://gbtzgszldsarfwzcqoiz.supabase.co/storage/v1/object/public/assets/"
+      ],
+      "purpose": "All Zendesk API calls and OAuth flows are proxied through Supabase edge functions to avoid CORS restrictions in the Stripe Apps sandbox"
+    }
+  },
+  "extensions": null,
   "permissions": [
     {
       "permission": "customer_read",
-      "purpose": "View customer details to match with Zendesk contacts"
+      "purpose": "Read Stripe customer email to look up matching Zendesk tickets"
     },
     {
       "permission": "secret_write",
-      "purpose": "Store Zendesk API credentials securely"
+      "purpose": "Store and refresh Zendesk OAuth tokens securely in Stripe Secret Store"
     }
   ],
-  "post_install_action": {
-    "type": "settings"
-  },
-  "ui_extension": {
-    "content_security_policy": {
-      "connect-src": [
-        "https://zsjcivwjghcroaoofnfr.functions.supabase.co/zendesk-oauth-callback"
-      ]
-    },
-    "views": [
-      {
-        "component": "CustomerDetailView",
-        "viewport": "stripe.dashboard.customer.detail"
-      },
-      {
-        "component": "SettingsView",
-        "viewport": "settings"
-      }
-    ]
-  },
-  "version": "0.0.12"
+  "distribution_type": "public"
 }

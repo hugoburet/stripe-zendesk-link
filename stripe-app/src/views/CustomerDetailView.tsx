@@ -1,352 +1,151 @@
 import {
-  Box,
-  Button,
-  ContextView,
-  Icon,
-  Inline,
-  Link,
-  Spinner,
-  Badge,
-  TextField,
-  Banner,
+  Badge, Banner, Box, Button, Divider,
+  Link, Select, Spinner, TextArea, TextField,
 } from '@stripe/ui-extension-sdk/ui';
-import type { ExtensionContextValue } from '@stripe/ui-extension-sdk/context';
 import { useState, useEffect } from 'react';
-import { fetchZendeskCustomer, fetchZendeskTickets } from '../api/zendesk';
-import type { ZendeskCustomer, ZendeskTicket } from '../types';
-import { useZendeskOAuth } from '../hooks/useZendeskOAuth';
+import { createHttpClient, STRIPE_API_KEY } from '@stripe/ui-extension-sdk/http_client';
+import Stripe from 'stripe';
+import type { ZendeskOAuth } from '../hooks/useZendeskOAuth';
+import { fetchTicketsByEmail, createTicket, type Ticket, type Credentials } from '../api/zendesk';
 
-const CustomerDetailView = ({ userContext, environment, oauthContext }: ExtensionContextValue) => {
-  const [zendeskCustomer, setZendeskCustomer] = useState<ZendeskCustomer | null>(null);
-  const [tickets, setTickets] = useState<ZendeskTicket[]>([]);
-  const [loading, setLoading] = useState(false);
+const stripe = new Stripe(STRIPE_API_KEY, { httpClient: createHttpClient(), apiVersion: '2023-10-16' });
+
+const STATUS_COLOR: Record<string, any> = { new: 'warning', open: 'info', pending: 'neutral', solved: 'positive', closed: 'neutral' };
+const PRIORITY_COLOR: Record<string, any> = { low: 'neutral', normal: 'neutral', high: 'warning', urgent: 'urgent' };
+
+interface Props {
+  customerId: string;
+  oauth: ZendeskOAuth;
+  onSelectTicket: (ticket: Ticket) => void;
+}
+
+export default function CustomerDetailView({ customerId, oauth, onSelectTicket }: Props) {
+  const [email, setEmail] = useState<string | null>(null);
+  const [tickets, setTickets] = useState<Ticket[] | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [inputSubdomain, setInputSubdomain] = useState('');
-  const [inputEmail, setInputEmail] = useState('');
-  const [manualEmail, setManualEmail] = useState('');
-  const [hasSearched, setHasSearched] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [subject, setSubject] = useState('');
+  const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState('normal');
+  const [status, setStatus] = useState('new');
+  const [creating, setCreating] = useState(false);
 
-  // Get mode for OAuth redirect URL
-  const mode = environment?.mode || 'test';
+  const creds: Credentials | null =
+    oauth.subdomain && oauth.accessToken
+      ? { subdomain: oauth.subdomain, accessToken: oauth.accessToken }
+      : null;
 
-  // Use OAuth hook
-  const {
-    isConnected,
-    isLoading: oauthLoading,
-    error: oauthError,
-    subdomain,
-    initiateLogin,
-    disconnect,
-  } = useZendeskOAuth({
-    oauthContext,
-    userId: userContext?.id || '',
-    mode,
-  });
-
-  // Get customer email from Stripe's objectContext - try multiple possible locations
-  const objectContext = environment?.objectContext as Record<string, any> | undefined;
-  const stripeCustomerEmail = 
-    objectContext?.email || 
-    objectContext?.customer?.email ||
-    (typeof objectContext?.object === 'object' ? objectContext.object?.email : null);
-
-  // The email to use for lookup - prefer Stripe context, fallback to manual entry
-  const emailToSearch = stripeCustomerEmail || manualEmail;
-
-  // Function to search for customer
-  const searchCustomer = async (email: string) => {
-    if (!email) return;
-    
-    try {
-      setLoading(true);
-      setError(null);
-      setHasSearched(true);
-      const customer = await fetchZendeskCustomer(email);
-      if (customer) {
-        setZendeskCustomer(customer);
-        const customerTickets = await fetchZendeskTickets(customer.id);
-        setTickets(customerTickets);
-      } else {
-        setError(`No Zendesk user found for: ${email}`);
-      }
-    } catch (err) {
-      console.error('Failed to load Zendesk data:', err);
-      setError('Failed to load Zendesk data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Auto-search when connected and we have email from Stripe context
   useEffect(() => {
-    if (isConnected && !oauthLoading && stripeCustomerEmail && !hasSearched) {
-      searchCustomer(stripeCustomerEmail);
-    }
-  }, [stripeCustomerEmail, isConnected, oauthLoading]);
+    setLoading(true); setEmail(null); setTickets(null); setError(null);
+    stripe.customers.retrieve(customerId)
+      .then(c => { setEmail(!c.deleted ? (c as Stripe.Customer).email ?? null : null); })
+      .catch(() => setError('Could not load customer.'));
+  }, [customerId]);
 
-  const handleManualSearch = () => {
-    if (manualEmail.trim()) {
-      searchCustomer(manualEmail.trim());
-    }
+  useEffect(() => {
+    if (!email || !creds) return;
+    setLoading(true);
+    fetchTicketsByEmail(creds, email)
+      .then(t => { setTickets(t); setError(null); })
+      .catch(e => {
+        if (e.message === 'ZENDESK_AUTH_EXPIRED') { oauth.markSessionExpired(); return; }
+        setError(e.message);
+      })
+      .finally(() => setLoading(false));
+  }, [email, creds?.accessToken]);
+
+  const handleCreate = async () => {
+    if (!creds || !email || !subject.trim()) return;
+    setCreating(true);
+    try {
+      await createTicket(creds, { subject, description, priority, status, requesterEmail: email });
+      setShowCreate(false); setSubject(''); setDescription(''); setPriority('normal'); setStatus('new');
+      const t = await fetchTicketsByEmail(creds, email);
+      setTickets(t);
+    } catch (e: any) {
+      if (e.message === 'ZENDESK_AUTH_EXPIRED') { oauth.markSessionExpired(); return; }
+      setError(e.message);
+    } finally { setCreating(false); }
   };
 
-  const handleLogin = () => {
-    if (inputSubdomain.trim() && inputEmail.trim()) {
-      initiateLogin(inputSubdomain.trim(), inputEmail.trim());
-    }
-  };
-
-  // Show loading while checking connection
-  if (oauthLoading) {
-    return (
-      <ContextView title="Zendesk">
-        <Box css={{ padding: 'medium', stack: 'y', alignX: 'center' }}>
-          <Spinner size="large" />
-          <Box css={{ marginTop: 'small', color: 'secondary' }}>
-            Checking connection...
-          </Box>
-        </Box>
-      </ContextView>
-    );
+  if (loading && !email) {
+    return <Box css={{ padding: 'large', alignX: 'center' }}><Spinner size="large" /></Box>;
   }
 
-  // Show connect prompt if Zendesk is not connected
-  if (!isConnected) {
-    return (
-      <ContextView title="Zendesk">
-        <Box css={{ padding: 'medium', stack: 'y', gapY: 'medium', alignX: 'center' }}>
-          {oauthError && (
-            <Banner type="critical" title="Connection Error" description={oauthError} />
-          )}
-          
-          <Box css={{ textAlign: 'center' }}>
-            <Icon name="settings" size="large" />
-          </Box>
-          <Box css={{ font: 'heading', fontWeight: 'semibold', textAlign: 'center' }}>
-            Connect to Zendesk
-          </Box>
-          <Box css={{ color: 'secondary', textAlign: 'center' }}>
-            Sign in with your Zendesk account to view customer support data.
-          </Box>
-          
-          <Box css={{ width: 'fill' }}>
-            <TextField
-              label="Your email"
-              placeholder="you@company.com"
-              description="We'll use this to keep you updated"
-              value={inputEmail}
-              onChange={(e) => setInputEmail(e.target.value)}
-            />
-          </Box>
+  return (
+    <Box css={{ stack: 'y', gapY: 'medium', padding: 'medium' }}>
 
-          <Box css={{ width: 'fill' }}>
-            <TextField
-              label="Zendesk subdomain"
-              placeholder="yourcompany"
-              description="From yourcompany.zendesk.com"
-              value={inputSubdomain}
-              onChange={(e) => setInputSubdomain(e.target.value)}
-            />
+      <Box css={{ stack: 'x', gapX: 'small', alignY: 'center' }}>
+        <Badge type="positive">Connected</Badge>
+        <Box css={{ font: 'caption', color: 'secondary' }}>{oauth.subdomain}.zendesk.com</Box>
+      </Box>
+
+      {error && <Banner type="critical" title="Error" description={error} />}
+
+      {email && <Box css={{ font: 'caption', color: 'secondary' }}>Tickets for {email}</Box>}
+
+      {!showCreate ? (
+        <Button type="secondary" onPress={() => setShowCreate(true)} disabled={!email}>
+          + New ticket
+        </Button>
+      ) : (
+        <Box css={{ stack: 'y', gapY: 'small', padding: 'small', background: 'container', borderRadius: 'small' }}>
+          <TextField label="Subject" value={subject} onChange={e => setSubject(e.target.value)} />
+          <TextArea label="Description" value={description} onChange={e => setDescription(e.target.value)} rows={3} />
+          <Box css={{ stack: 'x', gapX: 'small' }}>
+            <Select label="Priority" value={priority} onChange={e => setPriority(e.target.value)}>
+              <option value="low">Low</option>
+              <option value="normal">Normal</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </Select>
+            <Select label="Status" value={status} onChange={e => setStatus(e.target.value)}>
+              <option value="new">New</option>
+              <option value="open">Open</option>
+              <option value="pending">Pending</option>
+              <option value="solved">Solved</option>
+            </Select>
           </Box>
-
-          <Button 
-            type="primary" 
-            onPress={handleLogin}
-            disabled={!inputSubdomain.trim() || !inputEmail.trim()}
-          >
-            <Icon name="external" />
-            Sign in with Zendesk
-          </Button>
-        </Box>
-      </ContextView>
-    );
-  }
-
-  // Show loading while fetching data
-  if (loading) {
-    return (
-      <ContextView title="Zendesk">
-        <Box css={{ padding: 'medium', stack: 'y', alignX: 'center' }}>
-          <Spinner size="large" />
-          <Box css={{ marginTop: 'small', color: 'secondary' }}>
-            Loading Zendesk data...
-          </Box>
-        </Box>
-      </ContextView>
-    );
-  }
-
-  // Show error or no customer found - with manual search option
-  if (error || (!zendeskCustomer && !loading)) {
-    return (
-      <ContextView title="Zendesk">
-        <Box css={{ padding: 'medium', stack: 'y', gapY: 'medium' }}>
-          {error && (
-            <Box css={{ color: 'secondary' }}>
-              {error}
-            </Box>
-          )}
-          
-          {/* Manual email search - useful in sandbox/demo mode */}
-          {(!stripeCustomerEmail || error) && (
-            <Box css={{ stack: 'y', gapY: 'small' }}>
-              <Box css={{ font: 'caption', color: 'secondary' }}>
-                Search by email:
-              </Box>
-              <TextField
-                label="Customer email"
-                placeholder="johntest@test.com"
-                value={manualEmail}
-                onChange={(e) => setManualEmail(e.target.value)}
-              />
-              <Button 
-                type="primary" 
-                onPress={handleManualSearch}
-                disabled={!manualEmail.trim()}
-              >
-                Search Zendesk
-              </Button>
-            </Box>
-          )}
-          
-          {subdomain && (
-            <Button href={`https://${subdomain}.zendesk.com`} type="secondary">
-              <Icon name="external" />
-              Open Zendesk
+          <Box css={{ stack: 'x', gapX: 'small' }}>
+            <Button type="primary" onPress={handleCreate} disabled={!subject.trim() || creating}>
+              {creating ? 'Creating...' : 'Create'}
             </Button>
-          )}
-          <Button type="destructive" onPress={disconnect}>
-            Disconnect Zendesk
-          </Button>
-        </Box>
-      </ContextView>
-    );
-  }
-
-  return (
-    <ContextView
-      title="Zendesk"
-      actions={
-        subdomain && (
-          <Button
-            href={`https://${subdomain}.zendesk.com/agent/users/${zendeskCustomer.id}`}
-            type="secondary"
-          >
-            <Icon name="external" />
-            View in Zendesk
-          </Button>
-        )
-      }
-    >
-      <Box css={{ stack: 'y', gapY: 'large', padding: 'medium' }}>
-        {/* Customer Info */}
-        <Box css={{ stack: 'y', gapY: 'small' }}>
-          <Box css={{ font: 'heading', fontWeight: 'semibold' }}>
-            {zendeskCustomer.name}
+            <Button type="secondary" onPress={() => setShowCreate(false)}>Cancel</Button>
           </Box>
-          <Box css={{ color: 'secondary', font: 'caption' }}>
-            {zendeskCustomer.email}
+        </Box>
+      )}
+
+      <Divider />
+
+      {loading && <Box css={{ alignX: 'center' }}><Spinner size="small" /></Box>}
+
+      {tickets && tickets.length === 0 && (
+        <Box css={{ font: 'caption', color: 'secondary' }}>No tickets found.</Box>
+      )}
+
+      {tickets && tickets.map(t => (
+        <Box key={t.id} css={{ stack: 'y', gapY: 'xsmall', padding: 'small', background: 'container', borderRadius: 'small' }}>
+          <Box css={{ stack: 'x', gapX: 'xsmall', distribute: 'space-between', alignY: 'center' }}>
+            <Box css={{ stack: 'x', gapX: 'xsmall' }}>
+              <Badge type={STATUS_COLOR[t.status] ?? 'neutral'}>{t.status}</Badge>
+              <Badge type={PRIORITY_COLOR[t.priority] ?? 'neutral'}>{t.priority}</Badge>
+            </Box>
+            <Link onPress={() => onSelectTicket(t)}>View</Link>
           </Box>
-          {zendeskCustomer.organization && (
-            <Box css={{ color: 'secondary', font: 'caption' }}>
-              {zendeskCustomer.organization}
-            </Box>
-          )}
-          {zendeskCustomer.tags.length > 0 && (
-            <Inline css={{ gapX: 'xsmall', wrap: 'wrap' }}>
-              {zendeskCustomer.tags.map((tag) => (
-                <Badge key={tag} type="info">
-                  {tag}
-                </Badge>
-              ))}
-            </Inline>
+          <Box css={{ font: 'caption', fontWeight: 'semibold' }}>{t.subject}</Box>
+          {t.description && (
+            <Box css={{ font: 'caption', color: 'secondary' }}>{t.description}</Box>
           )}
         </Box>
+      ))}
 
-        {/* Tickets Section */}
-        <Box css={{ stack: 'y', gapY: 'small' }}>
-          <Box css={{ font: 'subheading', fontWeight: 'semibold' }}>
-            Recent Tickets ({tickets.length})
-          </Box>
-          
-          {tickets.length === 0 ? (
-            <Box css={{ color: 'secondary', font: 'caption' }}>
-              No open tickets
-            </Box>
-          ) : (
-            <Box css={{ stack: 'y', gapY: 'small' }}>
-              {tickets.slice(0, 5).map((ticket) => (
-                <TicketRow key={ticket.id} ticket={ticket} subdomain={subdomain} />
-              ))}
-            </Box>
-          )}
-        </Box>
+      <Divider />
 
-        {/* Disconnect option */}
-        <Box css={{ marginTop: 'medium' }}>
-          <Button type="secondary" onPress={disconnect}>
-            Disconnect Zendesk
-          </Button>
-        </Box>
-      </Box>
-    </ContextView>
-  );
-};
+      <Button type="destructive" onPress={oauth.disconnect}>
+        Disconnect Zendesk
+      </Button>
 
-const TicketRow = ({ ticket, subdomain }: { ticket: ZendeskTicket; subdomain: string | null }) => {
-  const statusColors: Record<string, 'info' | 'warning' | 'positive' | 'critical' | 'neutral'> = {
-    new: 'info',
-    open: 'warning',
-    pending: 'neutral',
-    solved: 'positive',
-    closed: 'neutral',
-  };
-
-  const priorityColors: Record<string, 'info' | 'warning' | 'positive' | 'critical' | 'neutral'> = {
-    low: 'neutral',
-    normal: 'info',
-    high: 'warning',
-    urgent: 'critical',
-  };
-
-  return (
-    <Box
-      css={{
-        padding: 'small',
-        background: 'container',
-        borderRadius: 'small',
-        stack: 'y',
-        gapY: 'xsmall',
-      }}
-    >
-      <Box css={{ stack: 'x', distribute: 'space-between', alignY: 'center' }}>
-        {subdomain ? (
-          <Link
-            href={`https://${subdomain}.zendesk.com/agent/tickets/${ticket.id}`}
-            external
-          >
-            #{ticket.id}
-          </Link>
-        ) : (
-          <Box>#{ticket.id}</Box>
-        )}
-        <Inline css={{ gapX: 'xsmall' }}>
-          <Badge type={statusColors[ticket.status] || 'neutral'}>
-            {ticket.status}
-          </Badge>
-          <Badge type={priorityColors[ticket.priority] || 'neutral'}>
-            {ticket.priority}
-          </Badge>
-        </Inline>
-      </Box>
-      <Box css={{ font: 'body', fontWeight: 'semibold' }}>
-        {ticket.subject}
-      </Box>
-      <Box css={{ color: 'secondary', font: 'caption' }}>
-        Updated {new Date(ticket.updatedAt).toLocaleDateString()}
-      </Box>
     </Box>
   );
-};
-
-export default CustomerDetailView;
+}

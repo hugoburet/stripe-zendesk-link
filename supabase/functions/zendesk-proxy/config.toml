@@ -1,0 +1,2 @@
+[functions.zendesk-proxy]
+verify_jwt = false
