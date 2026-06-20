@@ -2,7 +2,7 @@
   "$schema": "https://stripe.com/stripe-app.schema.json",
   "id": "com.example.invoicetemplate",
   "name": "Zendesk Connector",
-  "version": "0.0.196",
+  "version": "0.0.197",
   "icon": "./icon.png",
   "ui_extension": {
     "views": [

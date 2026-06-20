@@ -98,12 +98,20 @@ export default function GetStartedView({ oauth }: Props) {
             type="email"
             value={email}
             onChange={e => setEmail(e.target.value)}
+            description="Required — we'll only use this to send important service updates."
           />
           <TextField
-            label="Zendesk URL"
+            label="Zendesk URL (required)"
             placeholder="https://company.zendesk.com"
             value={url}
             onChange={e => setUrl(e.target.value)}
+            onBlur={() => {
+              const trimmed = url.trim();
+              if (trimmed && !trimmed.startsWith('http')) {
+                setUrl(`https://${trimmed}`);
+              }
+            }}
+            description="Required — e.g., https://company.zendesk.com"
           />
         </Box>
 
