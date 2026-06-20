@@ -83,18 +83,12 @@ const App = (_: ExtensionContextValue) => {
 
   if (oauth.isLoading) {
     return (
-      <ContextView title="Zendesk Connector" brandColor={ZENDESK_BRAND_COLOR} brandIcon={ZENDESK_BRAND_ICON}>
-        <Box css={{ padding: 'large', alignX: 'center' }}><Spinner size="large" /></Box>
-      </ContextView>
+      <Box css={{ padding: 'large', alignX: 'center' }}><Spinner size="large" /></Box>
     );
   }
 
   if (!oauth.isConnected) {
-    return (
-      <ContextView title="Zendesk Connector" brandColor={ZENDESK_BRAND_COLOR} brandIcon={ZENDESK_BRAND_ICON}>
-        <GetStartedView oauth={oauth} />
-      </ContextView>
-    );
+    return <GetStartedView oauth={oauth} />;
   }
 
   if (selectedTicket && creds) {

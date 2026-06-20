@@ -43,6 +43,7 @@ export interface ZendeskOAuth {
   error: string | null;
   buildAuthUrl: (subdomain: string) => Promise<{ url: string } | null>;
   onLinkPress: () => void;
+  cancelWaiting: () => void;
   disconnect: () => Promise<void>;
   markSessionExpired: () => void;
 }
@@ -158,10 +159,16 @@ export function useZendeskOAuth(): ZendeskOAuth {
     setSessionExpired(false); setError(null); setWaiting(false); setLoading(false);
   }, []);
 
+  const cancelWaiting = useCallback(() => {
+    setWaiting(false);
+    setError(null);
+    stateRef.current = null;
+  }, []);
+
   const markSessionExpired = useCallback(() => {
     setConnected(false);
     setSessionExpired(true);
   }, []);
 
-  return { isConnected, isLoading, isWaiting, sessionExpired, subdomain, accessToken, error, buildAuthUrl, onLinkPress, disconnect, markSessionExpired };
+  return { isConnected, isLoading, isWaiting, sessionExpired, subdomain, accessToken, error, buildAuthUrl, onLinkPress, cancelWaiting, disconnect, markSessionExpired };
 }
